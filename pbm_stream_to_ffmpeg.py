@@ -60,11 +60,11 @@ async def main():
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-video_size", f"{WIDTH}x{HEIGHT}",
-            "-r", "4",
+            "-r", "2",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-vf", "scale=160:160:flags=neighbor",
+            "-vf", "scale=1920:1080:flags=neighbor",
             output_file,
         ]
     else:
@@ -75,7 +75,7 @@ async def main():
             "-f", "rawvideo",
             "-pixel_format", "rgb24",
             "-video_size", f"{WIDTH}x{HEIGHT}",
-            "-framerate", "2",
+            "-framerate", "60",
             "-",
         ]
 

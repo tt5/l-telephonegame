@@ -46,8 +46,8 @@ def pbm_to_input(data: bytes) -> np.ndarray:
     # Invert: MNIST expects white-on-black (0=background), our PBM is 1=black
     out = 1.0 - out
 
-    # Add batch dim: (1, 28, 28)
-    return out.reshape(1, 28, 28)
+    # Add batch and channel dims: (1, 28, 28, 1)
+    return out.reshape(1, 28, 28, 1)
 
 
 async def main():

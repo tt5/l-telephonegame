@@ -1,7 +1,8 @@
 import asyncio
+import sys
 
 NATS_URL = "nats://127.0.0.1:4222"
-SUBJECT = "one"
+SUBJECT = sys.argv[1] if len(sys.argv) > 1 else "one"
 WS_HOST = "0.0.0.0"
 WS_PORT = 4195
 WS_PATH = "/get/ws"

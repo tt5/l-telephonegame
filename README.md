@@ -37,8 +37,12 @@ The original 28x28 grayscale image is preserved through the chain so the final d
 ./nats-server -js
 nats str add one --subjects "one" --defaults
 nats str info one -j | jq > one.config
-nats str add one --config one.config
 ```
+change `"max_msgs": -1,` to `"max_msgs": 10,` in `one.config`
+
+`nats str add one --config one.config`
+
+stop nats server.
 
 ### 1. Start the backend
 ```bash

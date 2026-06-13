@@ -38,14 +38,12 @@ def pbm_to_rgb(data: bytes) -> bytes:
             row.append((byte >> bit_pos) & 1)
         grid.append(row)
 
-    # 90° counter-clockwise: new[row][col] = old[col][7-row]
-    # Equivalently: iterate new rows = old columns (right to left),
     # new cols = old rows (top to bottom)
     out = bytearray()
     for new_row in range(8):
         for new_col in range(8):
             # new_row maps to old col (7 - new_row), new_col maps to old row
-            bit = grid[new_col][7 - new_row]
+            bit = grid[new_row][new_col]
             if bit:
                 out.extend(b"\x00\x00\x00")
             else:

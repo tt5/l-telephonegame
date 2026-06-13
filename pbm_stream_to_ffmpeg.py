@@ -28,8 +28,7 @@ FRAME_TOTAL = HEADER_LEN + PBM_DATA_BYTES  # 14 bytes per frame
 def pbm_to_rgb(data: bytes) -> bytes:
     """Convert P4 PBM pixel data (1-bit, 0=white 1=black) to RGB24.
     Each byte is one row of 8 pixels, MSB = leftmost.
-    Output is row-major RGB24 for ffplay rawvideo.
-    Applies 90° counter-clockwise rotation to fix orientation."""
+    Output is row-major RGB24 for ffplay rawvideo."""
     # Build 8x8 pixel grid: grid[row][col]
     grid = []
     for byte in data:
@@ -42,7 +41,6 @@ def pbm_to_rgb(data: bytes) -> bytes:
     out = bytearray()
     for new_row in range(8):
         for new_col in range(8):
-            # new_row maps to old col (7 - new_row), new_col maps to old row
             bit = grid[new_row][new_col]
             if bit:
                 out.extend(b"\x00\x00\x00")

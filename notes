@@ -1,7 +1,9 @@
 curl -sf https://binaries.nats.dev/nats-io/nats-server/v2@latest | sh
+
 ./nats-server -js
 nats req one hello2 --wait
 nats str ls
+
 ./nats-server -js
 nats str add one --subjects "one" --defaults
 nats str info one -j | jq > one.config
@@ -12,12 +14,8 @@ nats str add one --config one.config
 npm install mqttx-cli -g
 mqttx pub -t one -m hello9 -V 3.1.1
 
-https://medium.com/@denis.volokh/event-driven-application-in-python-using-nats-bfe7a22c13d4
-
 nats str purge one --subject one
 
-hyx:
-https://yx7.cc/code/
 websocat ws://localhost:4195/get/ws | xxd
 ffmpeg -i out.mp4 -vf "scale=1920:1080:flags=neighbor" -c:v libx264 -pix_fmt yuv420p -r 60 -vsync cfr out_1080p60.mp4
 ./start_telephone_game.sh

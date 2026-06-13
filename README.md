@@ -40,7 +40,10 @@ nats str info one -j | jq > one.config
 ```
 change `"max_msgs": -1,` to `"max_msgs": 10,` in `one.config`
 
-`nats str add one --config one.config`
+```bash
+nats str rm one -f
+nats str add one --config one.config
+```
 
 stop nats server.
 

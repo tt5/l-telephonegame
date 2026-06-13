@@ -1,17 +1,14 @@
 import asyncio, time, logging
-import sys
 from pathlib import Path
 
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from digits import make_p4
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
 FPS = 2
 LATENT_DIM = 16
-GENERATOR_PATH = Path(__file__).parent.parent / "cvae_generator.onnx"
+GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +48,6 @@ def build_message(image_28x28: np.ndarray) -> bytes:
         [PBM 8x8: 14 bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
     """
     pbm = downscale_to_pbm(image_28x28)
-    # Original 28x28 as uint8 bytes (0-255)
     orig_bytes = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
     orig_size = len(orig_bytes).to_bytes(4, "big")
     return pbm + orig_size + orig_bytes
@@ -76,7 +72,6 @@ async def main():
         while True:
             digit = idx % 10
 
-            # Generate unique rendering from CVAE
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
             label_oh = np.zeros((1, 10), dtype=np.float32)
             label_oh[0, digit] = 1.0

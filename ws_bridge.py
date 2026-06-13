@@ -7,6 +7,7 @@ WS_HOST = "0.0.0.0"
 WS_PORT = 4195
 WS_PATH = "/get/ws"
 
+
 async def main():
     import nats
     import websockets
@@ -34,11 +35,10 @@ async def main():
             except Exception:
                 pass
 
-    # Only accept connections on /get/ws
     async def process_request(conn, request: Request):
         if request.path != WS_PATH:
             return Response(404, "Not Found", [], b"")
-        return None  # continue to handler
+        return None
 
     nc = await nats.connect(NATS_URL)
     print(f"Connected to NATS at {NATS_URL}, subscribed to '{SUBJECT}'")
@@ -50,6 +50,7 @@ async def main():
         process_request=process_request,
     ):
         await asyncio.Event().wait()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

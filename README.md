@@ -20,10 +20,10 @@ The original 28x28 grayscale image is preserved through the chain so the final d
 
 | File | Description |
 |------|-------------|
-| `publisher/publish.py` | Generates digits 0-9 via CVAE, downscales to 8x8 PBM, publishes to NATS "one" |
-| `classifier_cvae.py` | Classifies 8x8 → generates new 28x28 via CVAE → publishes 8x8 PBM to NATS "two" |
+| `publish.py` | Generates digits 0-9 via CVAE, downscales to 8x8 PBM, publishes to NATS "one" |
+| `classifier_cvae.py` | Classifies 8x8 → generates new 28x28 via CVAE → publishes 8x28 PBM to NATS "two" |
 | `pbm_stream_to_ffmpeg.py` | Receives websocket frames, classifies + generates, displays side-by-side at 56x28 |
-| `publisher/ws_bridge.py` | Bridges NATS subject to WebSocket (port 4195) |
+| `ws_bridge.py` | Bridges NATS subject to WebSocket (port 4195) |
 | `digits.py` | Shared digit templates and PBM utilities |
 | `start_telephone_game.sh` | Starts all backend processes (NATS, publisher, classifier, ws_bridge) |
 

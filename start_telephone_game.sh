@@ -18,18 +18,14 @@ sleep 1
 
 # 2. Start ws_bridge (subject "two" — the classifier output)
 echo "[2/4] Starting ws_bridge on subject 'two'..."
-cd publisher
 uv run ws_bridge.py two &
 BRIDGE_PID=$!
-cd "$SCRIPT_DIR"
 sleep 1
 
 # 3. Start publisher (generates digits → NATS "one")
 echo "[3/4] Starting publisher..."
-cd publisher
 uv run publish.py &
 PUBLISHER_PID=$!
-cd "$SCRIPT_DIR"
 sleep 1
 
 # 4. Start classifier (classifies "one" → generates → NATS "two")

@@ -1,7 +1,7 @@
 [project]
 name = "nats"
 version = "0.1.0"
-description = "Add your description here"
+description = "Telephone game video pipeline — NATS pub/sub with CVAE digit generation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

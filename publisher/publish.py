@@ -44,6 +44,19 @@ def downscale_to_pbm(image_28x28: np.ndarray) -> bytes:
     return bytes(buf)
 
 
+def build_message(image_28x28: np.ndarray) -> bytes:
+    """Build a message containing the 8x8 PBM + the original 28x28 image.
+
+    Format:
+        [PBM 8x8: 14 bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
+    """
+    pbm = downscale_to_pbm(image_28x28)
+    # Original 28x28 as uint8 bytes (0-255)
+    orig_bytes = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
+    orig_size = len(orig_bytes).to_bytes(4, "big")
+    return pbm + orig_size + orig_bytes
+
+
 async def main():
     import nats
     import onnxruntime as ort
@@ -77,7 +90,8 @@ async def main():
 
             gen_outputs = gen_session.run([gen_output_name], gen_inputs)
             image_28x28 = gen_outputs[0][0, :, :, 0]
-            payload = downscale_to_pbm(image_28x28)
+
+            payload = build_message(image_28x28)
 
             await nc.publish(SUBJECT, payload)
             log.info(f"Published digit {digit} ({len(payload)} bytes)")

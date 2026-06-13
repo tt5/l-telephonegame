@@ -152,13 +152,14 @@ async def main():
         gen_outputs = gen_session.run([gen_output_name], gen_inputs)
         image_28x28 = gen_outputs[0][0, :, :, 0]
 
-        # Build output: new PBM + original image passed through
+        # Build output: new PBM + original image passed through unchanged
         pbm = downscale_to_pbm(image_28x28)
-
-        # Use the NEW generated image as the "original" for the next stage
-        # so the display can show the chain of transformations
-        new_orig = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
-        payload = build_message(pbm, new_orig)
+        # Pass through the original image from the publisher (telephone game: preserve the original)
+        if orig_data is not None and len(orig_data) == 784:
+            passed_orig = orig_data
+        else:
+            passed_orig = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
+        payload = build_message(pbm, passed_orig)
 
         frame_count += 1
         prob_str = " ".join(f"{i}:{cls_probs[i]:.2f}" for i in range(10))

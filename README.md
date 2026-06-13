@@ -57,14 +57,9 @@ In a separate terminal:
 uv run pbm_stream_to_ffmpeg.py
 ```
 
-### 3. Record a video
+or record a video
 ```bash
 uv run pbm_stream_to_ffmpeg.py out.mp4
-```
-
-### 4. Convert to Full HD 60fps
-```bash
-ffmpeg -i out.mp4 -vf "scale=1920:1080:flags=neighbor" -c:v libx264 -pix_fmt yuv420p -r 60 -vsync cfr out_1080p60.mp4
 ```
 
 ## Pipeline Flow

@@ -49,7 +49,7 @@ async def main():
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-video_size", f"{WIDTH}x{HEIGHT}",
-            "-r", "2",
+            "-r", "4",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
@@ -59,6 +59,8 @@ async def main():
     else:
         cmd = [
             "ffplay",
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
             "-f", "rawvideo",
             "-pixel_format", "rgb24",
             "-video_size", f"{WIDTH}x{HEIGHT}",
@@ -67,7 +69,12 @@ async def main():
         ]
 
     print(f"Starting: {' '.join(cmd)}", file=sys.stderr)
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        bufsize=0,
+    )
 
     async with websockets.connect(WS_URL) as ws:
         buf = bytearray()

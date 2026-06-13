@@ -105,6 +105,19 @@ DIGITS = {
 }
 
 
+# Alt digit templates — shifted right+down for "different pronunciation"
+# Each pixel is shifted: new[r][c] = old[r-1][c-1] (with wrapping dropped)
+DIGITS_ALT = {}
+for d in range(10):
+    src = DIGITS[d]
+    dst = [[0]*8 for _ in range(8)]
+    for r in range(8):
+        for c in range(8):
+            if r > 0 and c > 0:
+                dst[r][c] = src[r-1][c-1]
+    DIGITS_ALT[d] = dst
+
+
 def make_p4(pixels):
     """Build a P4 PBM byte string from a 2D list of 0/1."""
     buf = bytearray()

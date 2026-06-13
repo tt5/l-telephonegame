@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from digits import DIGITS, make_p4
+from digits import DIGITS, DIGITS_ALT, make_p4
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
@@ -65,8 +65,8 @@ async def main():
     print(f"Connected to {NATS_URL}")
     print(f"Subscribed to '{SUBJECT_IN}', publishing to '{SUBJECT_OUT}'")
 
-    # Pre-build PBM frames for each digit
-    digit_frames = {d: make_p4(DIGITS[d]) for d in range(10)}
+    # Pre-build PBM frames for each digit (alt font for classifier output)
+    digit_frames = {d: make_p4(DIGITS_ALT[d]) for d in range(10)}
 
     frame_count = 0
 

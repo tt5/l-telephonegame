@@ -2,7 +2,7 @@
 """pbm_stream_to_ffmpeg.py
 
 Reads PBM frames from a websocket, splits them on frame boundaries,
-and pipes them to ffmpeg for encoding.
+converts to RGB, and pipes to ffmpeg for display or encoding.
 
 Usage:
     uv run pbm_stream_to_ffmpeg.py [output.mp4]
@@ -16,7 +16,6 @@ import sys
 
 WS_URL = "ws://localhost:4195/get/ws"
 WIDTH, HEIGHT = 8, 8
-FRAME_SIZE = WIDTH * HEIGHT * 3  # RGB24
 
 # P4 PBM header we expect: "P4\n8 8\n"
 PBM_HEADER = b"P4\n8 8\n"
@@ -67,43 +66,34 @@ async def main():
             "-",
         ]
 
-    print(f"Starting ffmpeg: {' '.join(cmd)}", file=sys.stderr)
+    print(f"Starting: {' '.join(cmd)}", file=sys.stderr)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
-    print(f"Connecting to {WS_URL}", file=sys.stderr)
     async with websockets.connect(WS_URL) as ws:
         buf = bytearray()
-        frame_count = 0
         while True:
             data = await ws.recv()
             if isinstance(data, str):
                 data = data.encode("latin-1")
             buf.extend(data)
 
-            # Extract complete frames from buffer
             while len(buf) >= FRAME_TOTAL:
-                # Find the next PBM header
                 idx = buf.find(PBM_HEADER)
                 if idx == -1:
                     buf.clear()
                     break
                 if idx + FRAME_TOTAL > len(buf):
-                    break  # incomplete frame, wait for more data
+                    break
 
                 frame_data = bytes(buf[idx + HEADER_LEN : idx + FRAME_TOTAL])
                 rgb = pbm_to_rgb(frame_data)
                 proc.stdin.write(rgb)
                 proc.stdin.flush()
 
-                frame_count += 1
-                if frame_count % 10 == 0:
-                    print(f"Frames sent: {frame_count}", file=sys.stderr)
-
                 buf = buf[idx + FRAME_TOTAL :]
 
     proc.stdin.close()
     proc.wait()
-    print(f"Done. Total frames: {frame_count}", file=sys.stderr)
 
 
 if __name__ == "__main__":

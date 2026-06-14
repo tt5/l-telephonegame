@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """pbm_stream_to_ffmpeg.py
 
-Reads 8x8 PBM frames from a websocket (with embedded original 28x28),
+Reads PBM frames from a websocket (with embedded original 28x28),
 classifies each frame, generates a new 28x28 image via CVAE,
 and displays original + generated side by side at 56x28.
 
 Message format:
-    [PBM 8x8: 14 bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
+    [PBM: variable bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
 """
 
 import asyncio
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pbm_utils import PBM_HEADER, PBM_TOTAL, parse_message, pbm_to_input
+from pbm_utils import parse_message, pbm_to_input
 
 WS_URL = "ws://localhost:4195/get/ws"
 SCRIPT_DIR = Path(__file__).parent
@@ -98,69 +98,72 @@ async def main():
                 data = data.encode("latin-1")
             buf.extend(data)
 
-            while len(buf) >= PBM_TOTAL:
-                idx = buf.find(PBM_HEADER)
-                if idx == -1:
-                    buf.clear()
-                    break
+            # Need at least "P4\n" to find the header
+            if len(buf) < 4:
+                continue
 
-                pixel_data, orig_data, width, height = parse_message(bytes(buf[idx:]))
-                if pixel_data is None:
-                    break
-                assert width is not None and height is not None
+            idx = buf.find(b"P4\n")
+            if idx == -1:
+                buf.clear()
+                continue
 
-                # Calculate total message length to advance buffer
-                bytes_per_row = (width + 7) // 8
-                pbm_data_bytes = bytes_per_row * height
-                header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
-                pbm_total = header_end + pbm_data_bytes
-                orig_start = idx + pbm_total
-                if len(buf) < orig_start + 4:
-                    break
-                orig_size = int.from_bytes(bytes(buf[orig_start : orig_start + 4]), "big")
-                msg_len = pbm_total + 4 + orig_size
-                if len(buf) < idx + msg_len:
-                    break
+            pixel_data, orig_data, width, height = parse_message(bytes(buf[idx:]))
+            if pixel_data is None:
+                break
+            assert width is not None and height is not None
 
-                # Reconstruct original 28x28
-                if orig_data is not None and len(orig_data) == 784:
-                    orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
-                else:
-                    orig_28x28 = np.zeros((28, 28), dtype=np.float32)
+            # Calculate total message length to advance buffer
+            bytes_per_row = (width + 7) // 8
+            pbm_data_bytes = bytes_per_row * height
+            header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
+            pbm_total = header_end + pbm_data_bytes
+            orig_start = idx + pbm_total
+            if len(buf) < orig_start + 4:
+                break
+            orig_size = int.from_bytes(bytes(buf[orig_start : orig_start + 4]), "big")
+            msg_len = pbm_total + 4 + orig_size
+            if len(buf) < idx + msg_len:
+                break
 
-                # Classify
-                cls_input = pbm_to_input(pixel_data, width=width, height=height)
-                cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
-                cls_probs = cls_outputs[0][0]
-                exp_probs = np.exp(cls_probs - np.max(cls_probs))
-                cls_probs = exp_probs / exp_probs.sum()
-                predicted = int(np.argmax(cls_probs))
-                confidence = cls_probs[predicted]
+            # Reconstruct original 28x28
+            if orig_data is not None and len(orig_data) == 784:
+                orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+            else:
+                orig_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-                # Generate 28x28 from CVAE
-                noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-                label_oh = np.zeros((1, 10), dtype=np.float32)
-                label_oh[0, predicted] = 1.0
+            # Classify
+            cls_input = pbm_to_input(pixel_data, width=width, height=height)
+            cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
+            cls_probs = cls_outputs[0][0]
+            exp_probs = np.exp(cls_probs - np.max(cls_probs))
+            cls_probs = exp_probs / exp_probs.sum()
+            predicted = int(np.argmax(cls_probs))
+            confidence = cls_probs[predicted]
 
-                gen_inputs = {}
-                for inp in gen_session.get_inputs():
-                    if "latent" in inp.name.lower():
-                        gen_inputs[inp.name] = noise
-                    elif "label" in inp.name.lower():
-                        gen_inputs[inp.name] = label_oh
+            # Generate 28x28 from CVAE
+            noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+            label_oh = np.zeros((1, 10), dtype=np.float32)
+            label_oh[0, predicted] = 1.0
 
-                gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-                gen_28x28 = gen_outputs[0][0, :, :, 0]
+            gen_inputs = {}
+            for inp in gen_session.get_inputs():
+                if "latent" in inp.name.lower():
+                    gen_inputs[inp.name] = noise
+                elif "label" in inp.name.lower():
+                    gen_inputs[inp.name] = label_oh
 
-                # Composite side by side
-                rgb = composite_side_by_side(orig_28x28, gen_28x28)
-                proc.stdin.write(rgb)
-                proc.stdin.flush()
+            gen_outputs = gen_session.run([gen_output_name], gen_inputs)
+            gen_28x28 = gen_outputs[0][0, :, :, 0]
 
-                frame_count += 1
-                print(f"Frame {frame_count:4d}  predicted={predicted}  conf={confidence:.2f}", file=sys.stderr)
+            # Composite side by side
+            rgb = composite_side_by_side(orig_28x28, gen_28x28)
+            proc.stdin.write(rgb)
+            proc.stdin.flush()
 
-                buf = buf[idx + msg_len :]
+            frame_count += 1
+            print(f"Frame {frame_count:4d}  predicted={predicted}  conf={confidence:.2f}", file=sys.stderr)
+
+            buf = buf[idx + msg_len :]
 
     proc.stdin.close()
     proc.wait()

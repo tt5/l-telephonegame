@@ -87,7 +87,7 @@ async def main():
         image_28x28 = gen_outputs[0][0, :, :, 0]
 
         # Build output: new PBM + original image passed through unchanged
-        pbm = downscale_to_pbm(image_28x28)
+        pbm = downscale_to_pbm(image_28x28, width=width, height=height)
         # Pass through the original image from the publisher (telephone game: preserve the original)
         if orig_data is not None and len(orig_data) == 784:
             passed_orig = orig_data

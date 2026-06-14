@@ -29,12 +29,25 @@ def parse_message(data: bytes):
     return pixel_data, orig_data
 
 
-def decode_pbm(data: bytes) -> np.ndarray:
-    """Decode 8 raw P4 PBM bytes into an 8x8 float32 grid."""
-    grid = np.zeros((8, 8), dtype=np.float32)
-    for row_idx, byte in enumerate(data):
-        for col_idx in range(8):
-            bit = (byte >> (7 - col_idx)) & 1
+def decode_pbm(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
+    """Decode raw P4 PBM pixel data into a float32 grid of shape (height, width).
+
+    Args:
+        data: Raw PBM pixel bytes (without header). Must contain enough bytes
+              for the given width and height (bytes per row = ceil(width / 8)).
+        width: Image width in pixels. Default 8.
+        height: Image height in pixels. Default 8.
+    """
+    bytes_per_row = (width + 7) // 8
+    grid = np.zeros((height, width), dtype=np.float32)
+    expected = bytes_per_row * height
+    if len(data) < expected:
+        raise ValueError(f"Need {expected} bytes for {width}x{height} PBM, got {len(data)}")
+    for row_idx in range(height):
+        row_start = row_idx * bytes_per_row
+        for col_idx in range(width):
+            byte_idx = row_start + col_idx // 8
+            bit = (data[byte_idx] >> (7 - col_idx % 8)) & 1
             grid[row_idx, col_idx] = bit
     return grid
 
@@ -110,6 +123,6 @@ def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
 def pbm_to_input(data: bytes) -> np.ndarray:
     """Convert 8x8 P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
     grid = decode_pbm(data)
-    upscaled = upscale(grid, 28, 28)
+    upscaled = upscale(grid, 28, 28) # 28x28 for MNIST
     dithered = dither_binary(upscaled)
     return normalize_for_mnist(dithered)

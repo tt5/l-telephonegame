@@ -9,43 +9,46 @@ PBM_TOTAL = HEADER_LEN + PBM_DATA_BYTES  # 14 bytes
 
 
 def parse_message(data: bytes):
-    """Parse a message into (pbm_pixel_data, orig_bytes, width, height).
+    """Parse a message into (digit, pbm_pixel_data, orig_bytes, width, height).
 
-    Returns (None, None, None, None) if invalid.
-    Width and height are read from the PBM header (P4\\nW H\\n).
+    Returns (None, None, None, None, None) if invalid.
+    Format: [digit: 1 byte][PBM: variable bytes][orig_size: 4 bytes][orig_data: orig_size bytes]
     """
-    # Find P4 header
-    p4_idx = data.find(b"P4\n")
-    if p4_idx == -1:
-        return None, None, None, None
+    if len(data) < 1:
+        return None, None, None, None, None
 
-    # Parse width and height from header
+    digit = data[0]
+    rest = data[1:]
+
+    p4_idx = rest.find(b"P4\n")
+    if p4_idx == -1:
+        return None, None, None, None, None
+
     try:
-        header_end = data.index(b"\n", p4_idx + 3)
-        dims = data[p4_idx + 3 : header_end].decode("ascii").strip().split()
+        header_end = rest.index(b"\n", p4_idx + 3)
+        dims = rest[p4_idx + 3 : header_end].decode("ascii").strip().split()
         width, height = int(dims[0]), int(dims[1])
     except (ValueError, IndexError):
-        return None, None, None, None
+        return None, None, None, None, None
 
     header_len = header_end + 1
     bytes_per_row = (width + 7) // 8
     pbm_data_bytes = bytes_per_row * height
-    pbm_total = header_len + pbm_data_bytes
 
     idx = p4_idx
-    pixel_data = data[idx + header_len : idx + header_len + pbm_data_bytes]
+    pixel_data = rest[idx + header_len : idx + header_len + pbm_data_bytes]
     if len(pixel_data) < pbm_data_bytes:
-        return None, None, None, None
+        return None, None, None, None, None
 
-    orig_start = idx + pbm_total
-    if len(data) < orig_start + 4:
-        return pixel_data, None, width, height
-    orig_size = int.from_bytes(data[orig_start : orig_start + 4], "big")
-    orig_data = data[orig_start + 4 : orig_start + 4 + orig_size]
+    orig_start = idx + header_len + pbm_data_bytes
+    if len(rest) < orig_start + 4:
+        return digit, pixel_data, None, width, height
+    orig_size = int.from_bytes(rest[orig_start : orig_start + 4], "big")
+    orig_data = rest[orig_start + 4 : orig_start + 4 + orig_size]
     if len(orig_data) < orig_size:
-        return pixel_data, None, width, height
+        return digit, pixel_data, None, width, height
 
-    return pixel_data, orig_data, width, height
+    return digit, pixel_data, orig_data, width, height
 
 
 def decode_pbm(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:

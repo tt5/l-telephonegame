@@ -25,22 +25,41 @@ GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
 LATENT_DIM = 16
 
 
-def composite_grid(cls_in: np.ndarray, listener_in: np.ndarray,
-                    orig: np.ndarray, cls_out: np.ndarray, listener_out: np.ndarray) -> bytes:
-    """Composite 5 images into a 2x3 grid (84x28) RGB24.
+def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
+                    wrong_guess=False, low_confidence=False):
+    """Composite 5 images into a 2x3 grid (84x56) RGB24.
 
     Layout:
         empty         | classifier_in  | listener_in
         original      | classifier_out | listener_out
 
-    Each cell is 28x28. Empty cell is black.
+    wrong_guess: highlight listener_in background red
+    low_confidence: highlight listener_in background yellow
     """
     W, H = 28, 28
     grid_w = W * 3  # 84
     grid_h = H * 2  # 56
     out = bytearray(grid_w * grid_h * 3)
 
-    def paste(img: np.ndarray, col: int, row: int):
+    # Background color for listener_in cell (col=2, row=0)
+    if wrong_guess:
+        bg_r, bg_g, bg_b = 255, 0, 0  # red
+    elif low_confidence:
+        bg_r, bg_g, bg_b = 200, 200, 0  # yellow
+    else:
+        bg_r, bg_g, bg_b = 0, 0, 0  # black
+
+    # Fill listener_in cell (col=2, row=0) with background color
+    for r in range(H):
+        for c in range(W):
+            gx = 2 * W + c
+            gy = 0 * H + r
+            offset = (gy * grid_w + gx) * 3
+            out[offset] = bg_r
+            out[offset + 1] = bg_g
+            out[offset + 2] = bg_b
+
+    def paste(img, col, row):
         """Paste a 28x28 float32 image into the grid at (col, row)."""
         for r in range(H):
             for c in range(W):
@@ -132,7 +151,11 @@ async def main():
                 buf.clear()
                 continue
 
-            pixel_data, orig_data, width, height = parse_message(bytes(buf[idx:]))
+            if idx == 0:
+                buf.clear()
+                continue
+
+            digit, pixel_data, orig_data, width, height = parse_message(bytes(buf[idx - 1:]))
             if pixel_data is None:
                 break
             assert width is not None and height is not None
@@ -165,7 +188,7 @@ async def main():
             if orig_section is None or cls_in_section is None or cls_out_section is None:
                 break
 
-            msg_len = pos - idx
+            msg_len = (pos - idx) + 1  # +1 for the digit byte before P4\n
             orig_data = orig_section
 
             # Reconstruct 28x28 images from message sections
@@ -228,14 +251,18 @@ async def main():
             else:
                 listener_out_28x28 = candidate
 
+            wrong_guess = predicted != digit
+            low_confidence = (predicted == digit) and (confidence < 0.6)
+
             # Composite 2x3 grid
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,
-                                 orig_28x28, cls_out_28x28, listener_out_28x28)
+                                 orig_28x28, cls_out_28x28, listener_out_28x28,
+                                 wrong_guess=wrong_guess, low_confidence=low_confidence)
             proc.stdin.write(rgb)
             proc.stdin.flush()
 
             frame_count += 1
-            print(f"Frame {frame_count:4d}  predicted={predicted}  conf={confidence:.2f}", file=sys.stderr)
+            print(f"Frame {frame_count:4d}  expected={digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == digit else 'WRONG'}]", file=sys.stderr)
 
             buf = buf[idx + msg_len :]
 

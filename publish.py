@@ -7,7 +7,7 @@ from pbm_utils import downscale_to_pbm
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
-FPS = 2
+FPS = 1
 LATENT_DIM = 16
 GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
 

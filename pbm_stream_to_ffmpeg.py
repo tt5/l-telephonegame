@@ -193,7 +193,7 @@ async def main():
             predicted = int(np.argmax(cls_probs))
             confidence = cls_probs[predicted]
 
-            # Listener input image: the upscaled PBM (before blur/invert)
+            # Listener input image: what the classifier sees (after blur + invert)
             listener_in_28x28 = cls_input[0, :, :, 0]
 
             # Generate 28x28 from CVAE

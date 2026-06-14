@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 from digits import make_p4
+from pbm_utils import downscale_to_pbm
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
@@ -16,29 +17,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("publisher")
-
-
-def downscale_to_pbm(image_28x28: np.ndarray) -> bytes:
-    """Downscale 28x28 float32 image to 8x8 binary PBM."""
-    grid = np.zeros((8, 8), dtype=np.float32)
-    for r in range(8):
-        for c in range(8):
-            r_start = r * 3 + min(r, 4)
-            c_start = c * 3 + min(c, 4)
-            r_end = min(r_start + 4, 28)
-            c_end = min(c_start + 4, 28)
-            grid[r, c] = image_28x28[r_start:r_end, c_start:c_end].mean()
-
-    binary = (grid > 0.5).astype(np.uint8)
-
-    buf = bytearray()
-    buf += b"P4\n8 8\n"
-    for row in binary:
-        byte = 0
-        for j in range(8):
-            byte = (byte << 1) | (row[j] & 1)
-        buf.append(byte)
-    return bytes(buf)
 
 
 def build_message(image_28x28: np.ndarray) -> bytes:

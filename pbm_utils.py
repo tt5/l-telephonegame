@@ -145,3 +145,35 @@ def pbm_to_input(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
     upscaled = upscale(grid, 28, 28)  # 28x28 for MNIST
     dithered = dither_binary(upscaled)
     return normalize_for_mnist(dithered)
+
+
+def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -> bytes:
+    """Downscale a 28x28 float32 image to a binary PBM of the given size.
+
+    Uses the inverse of the upscale offset math: each destination pixel maps
+    back to the corresponding block in the source, then thresholds at 0.5.
+    """
+    src_h, src_w = image_28x28.shape
+    grid = np.zeros((height, width), dtype=np.float32)
+    base_h, extra_h = divmod(src_h, height)
+    base_w, extra_w = divmod(src_w, width)
+    for r in range(height):
+        for c in range(width):
+            r_start = r * base_h + min(r, extra_h)
+            c_start = c * base_w + min(c, extra_w)
+            r_end = min(r_start + base_h + (1 if r < extra_h else 0), src_h)
+            c_end = min(c_start + base_w + (1 if c < extra_w else 0), src_w)
+            grid[r, c] = image_28x28[r_start:r_end, c_start:c_end].mean()
+
+    binary = (grid > 0.5).astype(np.uint8)
+
+    header = f"P4\n{width} {height}\n".encode("ascii")
+    buf = bytearray(header)
+    bytes_per_row = (width + 7) // 8
+    for row in binary:
+        val = 0
+        for j in range(width):
+            val = (val << 1) | (int(row[j]) & 1)
+        val <<= (bytes_per_row * 8 - width)
+        buf.extend(val.to_bytes(bytes_per_row, "big"))
+    return bytes(buf)

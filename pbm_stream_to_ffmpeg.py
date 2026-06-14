@@ -25,18 +25,43 @@ GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
 LATENT_DIM = 16
 
 
-def composite_side_by_side(orig_28x28: np.ndarray, gen_28x28: np.ndarray) -> bytes:
-    """Composite two 28x28 grayscale images side by side into 56x28 RGB24."""
-    out = bytearray()
-    for r in range(28):
-        for c in range(28):
-            val = int(orig_28x28[r, c] * 255)
-            val = max(0, min(255, val))
-            out.extend(bytes([val, val, val]))
-        for c in range(28):
-            val = int(gen_28x28[r, c] * 255)
-            val = max(0, min(255, val))
-            out.extend(bytes([val, val, val]))
+def composite_grid(cls_in: np.ndarray, listener_in: np.ndarray,
+                    orig: np.ndarray, cls_out: np.ndarray, listener_out: np.ndarray) -> bytes:
+    """Composite 5 images into a 2x3 grid (84x28) RGB24.
+
+    Layout:
+        empty         | classifier_in  | listener_in
+        original      | classifier_out | listener_out
+
+    Each cell is 28x28. Empty cell is black.
+    """
+    W, H = 28, 28
+    grid_w = W * 3  # 84
+    grid_h = H * 2  # 56
+    out = bytearray(grid_w * grid_h * 3)
+
+    def paste(img: np.ndarray, col: int, row: int):
+        """Paste a 28x28 float32 image into the grid at (col, row)."""
+        for r in range(H):
+            for c in range(W):
+                val = int(img[r, c] * 255)
+                val = max(0, min(255, val))
+                gx = col * W + c
+                gy = row * H + r
+                offset = (gy * grid_w + gx) * 3
+                out[offset] = val
+                out[offset + 1] = val
+                out[offset + 2] = val
+
+    # Row 0: empty | classifier_in | listener_in
+    paste(cls_in, 1, 0)
+    paste(listener_in, 2, 0)
+
+    # Row 1: original | classifier_out | listener_out
+    paste(orig, 0, 1)
+    paste(cls_out, 1, 1)
+    paste(listener_out, 2, 1)
+
     return bytes(out)
 
 
@@ -60,12 +85,12 @@ async def main():
             "ffmpeg", "-y",
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
-            "-video_size", "56x28",
+            "-video_size", "84x56",
             "-r", "2",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-vf", "scale=560:280:flags=neighbor",
+            "-vf", "scale=840:560:flags=neighbor",
             output_file,
         ]
     else:
@@ -75,7 +100,7 @@ async def main():
             "-flags", "low_delay",
             "-f", "rawvideo",
             "-pixel_format", "rgb24",
-            "-video_size", "56x28",
+            "-video_size", "84x56",
             "-framerate", "60",
             "-",
         ]
@@ -143,13 +168,23 @@ async def main():
             msg_len = pos - idx
             orig_data = orig_section
 
-            # Reconstruct original 28x28
+            # Reconstruct 28x28 images from message sections
             if orig_data is not None and len(orig_data) == 784:
                 orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
             else:
                 orig_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            # Classify
+            if cls_in_section is not None and len(cls_in_section) == 784:
+                cls_in_28x28 = np.frombuffer(cls_in_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+            else:
+                cls_in_28x28 = np.zeros((28, 28), dtype=np.float32)
+
+            if cls_out_section is not None and len(cls_out_section) == 784:
+                cls_out_28x28 = np.frombuffer(cls_out_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+            else:
+                cls_out_28x28 = np.zeros((28, 28), dtype=np.float32)
+
+            # Listener: classify the PBM and generate its own CVAE output
             cls_input = pbm_to_input(pixel_data, width=width, height=height)
             cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
             cls_probs = cls_outputs[0][0]
@@ -157,6 +192,9 @@ async def main():
             cls_probs = exp_probs / exp_probs.sum()
             predicted = int(np.argmax(cls_probs))
             confidence = cls_probs[predicted]
+
+            # Listener input image: the upscaled PBM (before blur/invert)
+            listener_in_28x28 = cls_input[0, :, :, 0]
 
             # Generate 28x28 from CVAE
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
@@ -171,10 +209,11 @@ async def main():
                     gen_inputs[inp.name] = label_oh
 
             gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-            gen_28x28 = gen_outputs[0][0, :, :, 0]
+            listener_out_28x28 = gen_outputs[0][0, :, :, 0]
 
-            # Composite side by side
-            rgb = composite_side_by_side(orig_28x28, gen_28x28)
+            # Composite 2x3 grid
+            rgb = composite_grid(cls_in_28x28, listener_in_28x28,
+                                 orig_28x28, cls_out_28x28, listener_out_28x28)
             proc.stdin.write(rgb)
             proc.stdin.flush()
 

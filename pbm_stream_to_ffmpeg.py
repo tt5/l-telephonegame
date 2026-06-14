@@ -196,20 +196,37 @@ async def main():
             # Listener input image: what the classifier sees (after blur + invert)
             listener_in_28x28 = cls_input[0, :, :, 0]
 
-            # Generate 28x28 from CVAE
-            noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-            label_oh = np.zeros((1, 10), dtype=np.float32)
-            label_oh[0, predicted] = 1.0
+            # Generate 28x28 from CVAE (retry until confident)
+            listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
+            candidate = listener_out_28x28
+            for _ in range(50):
+                noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+                label_oh = np.zeros((1, 10), dtype=np.float32)
+                label_oh[0, predicted] = 1.0
 
-            gen_inputs = {}
-            for inp in gen_session.get_inputs():
-                if "latent" in inp.name.lower():
-                    gen_inputs[inp.name] = noise
-                elif "label" in inp.name.lower():
-                    gen_inputs[inp.name] = label_oh
+                gen_inputs = {}
+                for inp in gen_session.get_inputs():
+                    if "latent" in inp.name.lower():
+                        gen_inputs[inp.name] = noise
+                    elif "label" in inp.name.lower():
+                        gen_inputs[inp.name] = label_oh
 
-            gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-            listener_out_28x28 = gen_outputs[0][0, :, :, 0]
+                gen_outputs = gen_session.run([gen_output_name], gen_inputs)
+                candidate = gen_outputs[0][0, :, :, 0]
+
+                # Classify the generated image
+                cls_in = candidate.reshape(1, 28, 28, 1).astype(np.float32)
+                cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
+                exp_p = np.exp(cls_out - np.max(cls_out))
+                gen_probs = exp_p / exp_p.sum()
+                gen_predicted = int(np.argmax(gen_probs))
+                gen_confidence = gen_probs[gen_predicted]
+
+                if gen_predicted == predicted and gen_confidence >= 0.7:
+                    listener_out_28x28 = candidate
+                    break
+            else:
+                listener_out_28x28 = candidate
 
             # Composite 2x3 grid
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,

@@ -89,20 +89,38 @@ async def main():
         predicted = int(np.argmax(cls_probs))
         confidence = cls_probs[predicted]
 
-        # Generate new image from CVAE
-        noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-        label_oh = np.zeros((1, 10), dtype=np.float32)
-        label_oh[0, predicted] = 1.0
+        # Generate new image from CVAE (retry until confident)
+        image_28x28 = np.zeros((28, 28), dtype=np.float32)
+        candidate = image_28x28
+        for _ in range(50):
+            noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+            label_oh = np.zeros((1, 10), dtype=np.float32)
+            label_oh[0, predicted] = 1.0
 
-        gen_inputs = {}
-        for inp in gen_session.get_inputs():
-            if "latent" in inp.name.lower():
-                gen_inputs[inp.name] = noise
-            elif "label" in inp.name.lower():
-                gen_inputs[inp.name] = label_oh
+            gen_inputs = {}
+            for inp in gen_session.get_inputs():
+                if "latent" in inp.name.lower():
+                    gen_inputs[inp.name] = noise
+                elif "label" in inp.name.lower():
+                    gen_inputs[inp.name] = label_oh
 
-        gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-        image_28x28 = gen_outputs[0][0, :, :, 0]
+            gen_outputs = gen_session.run([gen_output_name], gen_inputs)
+            candidate = gen_outputs[0][0, :, :, 0]
+
+            # Classify the generated image
+            cls_in = candidate.reshape(1, 28, 28, 1).astype(np.float32)
+            cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
+            exp_p = np.exp(cls_out - np.max(cls_out))
+            gen_probs = exp_p / exp_p.sum()
+            gen_predicted = int(np.argmax(gen_probs))
+            gen_confidence = gen_probs[gen_predicted]
+
+            if gen_predicted == predicted and gen_confidence >= 0.7:
+                image_28x28 = candidate
+                break
+        else:
+            image_28x28 = candidate  # use last attempt even if below threshold
+
         classifier_out_img = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
 
         # Build output: new PBM + original image passed through unchanged

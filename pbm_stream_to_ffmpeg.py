@@ -112,18 +112,36 @@ async def main():
                 break
             assert width is not None and height is not None
 
-            # Calculate total message length to advance buffer
+            # Parse extended message: PBM + orig + cls_in + cls_out
+            # Each section: [size: 4 bytes BE uint32][data: size bytes]
             bytes_per_row = (width + 7) // 8
             pbm_data_bytes = bytes_per_row * height
             header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
             pbm_total = header_end + pbm_data_bytes
-            orig_start = idx + pbm_total
-            if len(buf) < orig_start + 4:
+
+            pos = idx + pbm_total  # current read position
+
+            def read_section():
+                nonlocal pos
+                if len(buf) < pos + 4:
+                    return None
+                size = int.from_bytes(bytes(buf[pos : pos + 4]), "big")
+                pos += 4
+                if len(buf) < pos + size:
+                    return None
+                data = bytes(buf[pos : pos + size])
+                pos += size
+                return data
+
+            orig_section = read_section()
+            cls_in_section = read_section()
+            cls_out_section = read_section()
+
+            if orig_section is None or cls_in_section is None or cls_out_section is None:
                 break
-            orig_size = int.from_bytes(bytes(buf[orig_start : orig_start + 4]), "big")
-            msg_len = pbm_total + 4 + orig_size
-            if len(buf) < idx + msg_len:
-                break
+
+            msg_len = pos - idx
+            orig_data = orig_section
 
             # Reconstruct original 28x28
             if orig_data is not None and len(orig_data) == 784:

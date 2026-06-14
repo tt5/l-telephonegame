@@ -28,10 +28,24 @@ LATENT_DIM = 16
 PBM_TOTAL = len(PBM_HEADER) + 8  # header + 8 data bytes
 
 
-def build_message(pbm: bytes, orig_data: bytes) -> bytes:
-    """Build output message: PBM + original image size + original data."""
-    orig_size = len(orig_data).to_bytes(4, "big")
-    return pbm + orig_size + orig_data
+def build_message(pbm: bytes, orig_data: bytes, cls_in_img: bytes, cls_out_img: bytes) -> bytes:
+    """Build output message: PBM + original image + classifier input + classifier output.
+
+    Format:
+        [PBM: variable bytes]
+        [orig_size: 4 bytes BE uint32][orig_data: orig_size bytes]
+        [cls_in_size: 4 bytes BE uint32][cls_in_data: cls_in_size bytes]
+        [cls_out_size: 4 bytes BE uint32][cls_out_data: cls_out_size bytes]
+    """
+    parts = bytearray()
+    parts += pbm
+    parts += len(orig_data).to_bytes(4, "big")
+    parts += orig_data
+    parts += len(cls_in_img).to_bytes(4, "big")
+    parts += cls_in_img
+    parts += len(cls_out_img).to_bytes(4, "big")
+    parts += cls_out_img
+    return bytes(parts)
 
 
 async def main():
@@ -96,7 +110,7 @@ async def main():
             passed_orig = orig_data
         else:
             passed_orig = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
-        payload = build_message(pbm, passed_orig)
+        payload = build_message(pbm, passed_orig, classifier_in_img, classifier_out_img)
 
         frame_count += 1
         prob_str = " ".join(f"{i}:{cls_probs[i]:.2f}" for i in range(10))

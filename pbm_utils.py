@@ -88,8 +88,23 @@ def dither_binary(image: np.ndarray) -> np.ndarray:
 
 
 def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
-    """Invert and reshape a 28x28 image to (1, 28, 28, 1) float32 for the classifier."""
-    return (1.0 - image).reshape(1, 28, 28, 1)
+    """Invert, apply Gaussian blur for anti-aliasing, and reshape to (1, 28, 28, 1) float32.
+
+    The blur converts the binary/dithered image into grayscale values similar
+    to anti-aliased MNIST digits. Uses a 3x3 Gaussian kernel with sigma≈0.7.
+    """
+    kernel = np.array([
+        [1, 2, 1],
+        [2, 4, 2],
+        [1, 2, 1],
+    ], dtype=np.float32) / 16.0
+    h, w = image.shape
+    padded = np.pad(image, 1, mode='constant', constant_values=0)
+    blurred = np.empty((h, w), dtype=np.float32)
+    for y in range(h):
+        for x in range(w):
+            blurred[y, x] = np.sum(padded[y:y+3, x:x+3] * kernel)
+    return (1.0 - blurred).reshape(1, 28, 28, 1)
 
 
 def pbm_to_input(data: bytes) -> np.ndarray:

@@ -25,7 +25,7 @@ def build_message(image_28x28: np.ndarray) -> bytes:
     Format:
         [PBM 8x8: 14 bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
     """
-    pbm = downscale_to_pbm(image_28x28, width=24, height=24)
+    pbm = downscale_to_pbm(image_28x28, width=20, height=20)
     orig_bytes = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
     orig_size = len(orig_bytes).to_bytes(4, "big")
     return pbm + orig_size + orig_bytes

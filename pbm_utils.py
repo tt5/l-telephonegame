@@ -93,32 +93,6 @@ def upscale(grid: np.ndarray, dst_h: int, dst_w: int) -> np.ndarray:
     return out
 
 
-def dither_binary(image: np.ndarray) -> np.ndarray:
-    """Apply Floyd-Steinberg error-diffusion dithering to produce a binary image.
-
-    Input values are clamped to [0, 1]. Output is strictly 0.0 or 1.0.
-    Quantization error is diffused to neighboring pixels:
-        7/16 right, 3/16 below-left, 5/16 below, 1/16 below-right.
-    """
-    img = image.copy().clip(0, 1)
-    h, w = img.shape
-    for y in range(h):
-        for x in range(w):
-            old = img[y, x]
-            new = 1.0 if old >= 0.5 else 0.0
-            img[y, x] = new
-            err = old - new
-            if x + 1 < w:
-                img[y, x + 1] += err * 7 / 16
-            if y + 1 < h:
-                if x - 1 >= 0:
-                    img[y + 1, x - 1] += err * 3 / 16
-                img[y + 1, x] += err * 5 / 16
-                if x + 1 < w:
-                    img[y + 1, x + 1] += err * 1 / 16
-    return img
-
-
 def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
     """Apply Gaussian blur for anti-aliasing and reshape to (1, 28, 28, 1) float32.
 
@@ -143,8 +117,7 @@ def pbm_to_input(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
     """Convert P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
     grid = decode_pbm(data, width=width, height=height)
     upscaled = upscale(grid, 28, 28)  # 28x28 for MNIST
-    dithered = dither_binary(upscaled)
-    return normalize_for_mnist(dithered)
+    return normalize_for_mnist(upscaled)
 
 
 def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -> bytes:

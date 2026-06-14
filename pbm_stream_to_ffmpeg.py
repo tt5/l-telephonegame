@@ -104,16 +104,21 @@ async def main():
                     buf.clear()
                     break
 
-                pixel_data, orig_data = parse_message(bytes(buf[idx:]))
+                pixel_data, orig_data, width, height = parse_message(bytes(buf[idx:]))
                 if pixel_data is None:
                     break
+                assert width is not None and height is not None
 
                 # Calculate total message length to advance buffer
-                orig_start = idx + PBM_TOTAL
+                bytes_per_row = (width + 7) // 8
+                pbm_data_bytes = bytes_per_row * height
+                header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
+                pbm_total = header_end + pbm_data_bytes
+                orig_start = idx + pbm_total
                 if len(buf) < orig_start + 4:
                     break
                 orig_size = int.from_bytes(bytes(buf[orig_start : orig_start + 4]), "big")
-                msg_len = PBM_TOTAL + 4 + orig_size
+                msg_len = pbm_total + 4 + orig_size
                 if len(buf) < idx + msg_len:
                     break
 
@@ -124,7 +129,7 @@ async def main():
                     orig_28x28 = np.zeros((28, 28), dtype=np.float32)
 
                 # Classify
-                cls_input = pbm_to_input(pixel_data)
+                cls_input = pbm_to_input(pixel_data, width=width, height=height)
                 cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
                 cls_probs = cls_outputs[0][0]
                 exp_probs = np.exp(cls_probs - np.max(cls_probs))

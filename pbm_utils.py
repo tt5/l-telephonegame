@@ -9,24 +9,43 @@ PBM_TOTAL = HEADER_LEN + PBM_DATA_BYTES  # 14 bytes
 
 
 def parse_message(data: bytes):
-    """Parse a message into (pbm_pixel_data, original_bytes).
-    Returns (None, None) if invalid."""
-    idx = data.find(PBM_HEADER)
-    if idx == -1:
-        return None, None
-    pixel_data = data[idx + HEADER_LEN : idx + HEADER_LEN + PBM_DATA_BYTES]
-    if len(pixel_data) < PBM_DATA_BYTES:
-        return None, None
+    """Parse a message into (pbm_pixel_data, orig_bytes, width, height).
 
-    orig_start = idx + PBM_TOTAL
+    Returns (None, None, None, None) if invalid.
+    Width and height are read from the PBM header (P4\\nW H\\n).
+    """
+    # Find P4 header
+    p4_idx = data.find(b"P4\n")
+    if p4_idx == -1:
+        return None, None, None, None
+
+    # Parse width and height from header
+    try:
+        header_end = data.index(b"\n", p4_idx + 3)
+        dims = data[p4_idx + 3 : header_end].decode("ascii").strip().split()
+        width, height = int(dims[0]), int(dims[1])
+    except (ValueError, IndexError):
+        return None, None, None, None
+
+    header_len = header_end + 1
+    bytes_per_row = (width + 7) // 8
+    pbm_data_bytes = bytes_per_row * height
+    pbm_total = header_len + pbm_data_bytes
+
+    idx = p4_idx
+    pixel_data = data[idx + header_len : idx + header_len + pbm_data_bytes]
+    if len(pixel_data) < pbm_data_bytes:
+        return None, None, None, None
+
+    orig_start = idx + pbm_total
     if len(data) < orig_start + 4:
-        return pixel_data, None
+        return pixel_data, None, width, height
     orig_size = int.from_bytes(data[orig_start : orig_start + 4], "big")
     orig_data = data[orig_start + 4 : orig_start + 4 + orig_size]
     if len(orig_data) < orig_size:
-        return pixel_data, None
+        return pixel_data, None, width, height
 
-    return pixel_data, orig_data
+    return pixel_data, orig_data, width, height
 
 
 def decode_pbm(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
@@ -120,9 +139,9 @@ def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
     return (1.0 - blurred).reshape(1, 28, 28, 1)
 
 
-def pbm_to_input(data: bytes) -> np.ndarray:
-    """Convert 8x8 P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
-    grid = decode_pbm(data)
-    upscaled = upscale(grid, 28, 28) # 28x28 for MNIST
+def pbm_to_input(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
+    """Convert P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
+    grid = decode_pbm(data, width=width, height=height)
+    upscaled = upscale(grid, 28, 28)  # 28x28 for MNIST
     dithered = dither_binary(upscaled)
     return normalize_for_mnist(dithered)

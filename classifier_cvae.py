@@ -80,12 +80,13 @@ async def main():
         nonlocal frame_count
         data = msg.data
 
-        pixel_data, orig_data = parse_message(data)
+        pixel_data, orig_data, width, height = parse_message(data)
         if pixel_data is None:
             return
+        assert width is not None and height is not None
 
         # Classify
-        input_tensor = pbm_to_input(pixel_data)
+        input_tensor = pbm_to_input(pixel_data, width=width, height=height)
         cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})
         cls_probs = cls_outputs[0][0]
         exp_probs = np.exp(cls_probs - np.max(cls_probs))

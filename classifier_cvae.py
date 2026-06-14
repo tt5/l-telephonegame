@@ -18,10 +18,6 @@ import numpy as np
 
 from pbm_utils import PBM_HEADER, downscale_to_pbm, parse_message, pbm_to_input
 
-# --test mode: bypass PBM pipeline, feed original image directly to classifier
-test_mode = "--test" in sys.argv
-if test_mode:
-    sys.argv.remove("--test")
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
 SUBJECT_OUT = "two"
@@ -54,8 +50,6 @@ def build_message(pbm: bytes, orig_data: bytes, cls_in_img: bytes, cls_out_img: 
 
 
 async def main():
-    if test_mode:
-        print("*** TEST MODE: using original image directly (bypassing PBM pipeline) ***")
     import nats
     import onnxruntime as ort
 
@@ -84,12 +78,7 @@ async def main():
         assert width is not None and height is not None
 
         # Classify
-        if test_mode and orig_data is not None and len(orig_data) == 784:
-            # Bypass PBM pipeline: use original 28x28 image directly
-            orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
-            input_tensor = orig_28x28.reshape(1, 28, 28, 1).astype(np.float32)
-        else:
-            input_tensor = pbm_to_input(pixel_data, width=width, height=height)
+        input_tensor = pbm_to_input(pixel_data, width=width, height=height)
 
         classifier_in_img = (input_tensor[0, :, :, 0] * 255).clip(0, 255).astype(np.uint8).tobytes()
 

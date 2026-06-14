@@ -30,7 +30,8 @@ sleep 1
 
 # 4. Start classifier (classifies "one" → generates → NATS "two")
 echo "[4/4] Starting classifier..."
-uv run classifier_cvae.py --test &
+#uv run classifier_cvae.py &
+uv run classifier_cvae.py &
 CLASSIFIER_PID=$!
 
 echo ""

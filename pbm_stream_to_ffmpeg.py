@@ -49,15 +49,24 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
     else:
         bg_r, bg_g, bg_b = 0, 0, 0  # black
 
-    # Fill listener_in cell (col=2, row=0) with background color
+    # Fill listener_in cell (col=2, row=0) with image, using bg color for dark pixels
     for r in range(H):
         for c in range(W):
+            val = int(listener_in[r, c] * 255)
+            val = max(0, min(255, val))
             gx = 2 * W + c
             gy = 0 * H + r
             offset = (gy * grid_w + gx) * 3
-            out[offset] = bg_r
-            out[offset + 1] = bg_g
-            out[offset + 2] = bg_b
+            if val < 128:
+                # Dark pixel → use highlight background color
+                out[offset] = bg_r
+                out[offset + 1] = bg_g
+                out[offset + 2] = bg_b
+            else:
+                # Light pixel → keep the digit
+                out[offset] = val
+                out[offset + 1] = val
+                out[offset + 2] = val
 
     def paste(img, col, row):
         """Paste a 28x28 float32 image into the grid at (col, row)."""
@@ -72,12 +81,8 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
                 out[offset + 1] = val
                 out[offset + 2] = val
 
-    # Row 0: empty | classifier_in | listener_in
+    # Row 0: empty | classifier_in
     paste(cls_in, 1, 0)
-    paste(listener_in, 2, 0)
-
-    # Row 1: original | classifier_out | listener_out
-    paste(orig, 0, 1)
     paste(cls_out, 1, 1)
     paste(listener_out, 2, 1)
 

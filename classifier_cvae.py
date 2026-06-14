@@ -64,6 +64,8 @@ async def main():
 
         # Classify
         input_tensor = pbm_to_input(pixel_data, width=width, height=height)
+        classifier_input_img = ((1.0 - input_tensor[0, :, :, 0]) * 255).clip(0, 255).astype(np.uint8).tobytes()
+
         cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})
         cls_probs = cls_outputs[0][0]
         exp_probs = np.exp(cls_probs - np.max(cls_probs))

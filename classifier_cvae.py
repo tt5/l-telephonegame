@@ -16,6 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
+from pbm_utils import PBM_HEADER, parse_message, pbm_to_input
+
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
 SUBJECT_OUT = "two"
@@ -23,59 +25,13 @@ CLASSIFIER_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).par
 GENERATOR_PATH = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(__file__).parent / "cvae_generator.onnx"
 
 LATENT_DIM = 16
-PBM_HEADER = b"P4\n8 8\n"
-HEADER_LEN = len(PBM_HEADER)
-PBM_DATA_BYTES = 8
-PBM_TOTAL = HEADER_LEN + PBM_DATA_BYTES  # 14 bytes
-
-
-def parse_message(data: bytes):
-    """Parse a message into (pbm_pixel_data, original_bytes).
-    Returns (None, None) if invalid."""
-    idx = data.find(PBM_HEADER)
-    if idx == -1:
-        return None, None
-    pixel_data = data[idx + HEADER_LEN : idx + HEADER_LEN + PBM_DATA_BYTES]
-    if len(pixel_data) < PBM_DATA_BYTES:
-        return None, None
-
-    # Extract original image after the PBM
-    orig_start = idx + PBM_TOTAL
-    if len(data) < orig_start + 4:
-        return pixel_data, None
-    orig_size = int.from_bytes(data[orig_start : orig_start + 4], "big")
-    orig_data = data[orig_start + 4 : orig_start + 4 + orig_size]
-    if len(orig_data) < orig_size:
-        return pixel_data, None
-
-    return pixel_data, orig_data
+PBM_TOTAL = len(PBM_HEADER) + 8  # header + 8 data bytes
 
 
 def build_message(pbm: bytes, orig_data: bytes) -> bytes:
     """Build output message: PBM + original image size + original data."""
     orig_size = len(orig_data).to_bytes(4, "big")
     return pbm + orig_size + orig_data
-
-
-def pbm_to_input(data: bytes) -> np.ndarray:
-    """Convert 8x8 P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
-    grid = np.zeros((8, 8), dtype=np.float32)
-    for row_idx, byte in enumerate(data):
-        for col_idx in range(8):
-            bit = (byte >> (7 - col_idx)) & 1
-            grid[row_idx, col_idx] = bit
-
-    out = np.zeros((28, 28), dtype=np.float32)
-    for r in range(8):
-        for c in range(8):
-            r_start = r * 3 + min(r, 4)
-            c_start = c * 3 + min(c, 4)
-            r_end = min(r_start + 4, 28)
-            c_end = min(c_start + 4, 28)
-            out[r_start:r_end, c_start:c_end] = grid[r, c]
-
-    out = 1.0 - out
-    return out.reshape(1, 28, 28, 1)
 
 
 def downscale_to_pbm(image_28x28: np.ndarray) -> bytes:

@@ -16,57 +16,13 @@ from pathlib import Path
 
 import numpy as np
 
+from pbm_utils import PBM_HEADER, PBM_TOTAL, parse_message, pbm_to_input
+
 WS_URL = "ws://localhost:4195/get/ws"
 SCRIPT_DIR = Path(__file__).parent
 CLASSIFIER_PATH = SCRIPT_DIR / "mnist_model.onnx"
 GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
 LATENT_DIM = 16
-
-PBM_HEADER = b"P4\n8 8\n"
-HEADER_LEN = len(PBM_HEADER)
-PBM_DATA_BYTES = 8
-PBM_TOTAL = HEADER_LEN + PBM_DATA_BYTES
-
-
-def parse_message(data: bytes):
-    """Parse message into (pbm_pixel_data, original_28x28_bytes)."""
-    idx = data.find(PBM_HEADER)
-    if idx == -1:
-        return None, None
-    pixel_data = data[idx + HEADER_LEN : idx + HEADER_LEN + PBM_DATA_BYTES]
-    if len(pixel_data) < PBM_DATA_BYTES:
-        return None, None
-
-    orig_start = idx + PBM_TOTAL
-    if len(data) < orig_start + 4:
-        return pixel_data, None
-    orig_size = int.from_bytes(data[orig_start : orig_start + 4], "big")
-    orig_data = data[orig_start + 4 : orig_start + 4 + orig_size]
-    if len(orig_data) < orig_size:
-        return pixel_data, None
-
-    return pixel_data, orig_data
-
-
-def pbm_to_input(data: bytes) -> np.ndarray:
-    """Convert 8x8 P4 PBM to (1, 28, 28, 1) float32."""
-    grid = np.zeros((8, 8), dtype=np.float32)
-    for row_idx, byte in enumerate(data):
-        for col_idx in range(8):
-            bit = (byte >> (7 - col_idx)) & 1
-            grid[row_idx, col_idx] = bit
-
-    out = np.zeros((28, 28), dtype=np.float32)
-    for r in range(8):
-        for c in range(8):
-            r_start = r * 3 + min(r, 4)
-            c_start = c * 3 + min(c, 4)
-            r_end = min(r_start + 4, 28)
-            c_end = min(c_start + 4, 28)
-            out[r_start:r_end, c_start:c_end] = grid[r, c]
-
-    out = 1.0 - out
-    return out.reshape(1, 28, 28, 1)
 
 
 def composite_side_by_side(orig_28x28: np.ndarray, gen_28x28: np.ndarray) -> bytes:

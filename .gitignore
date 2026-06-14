@@ -4,3 +4,4 @@ hyx
 nats-server
 __pycache__
 one.config
+.mnist_cache/

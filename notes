@@ -20,3 +20,5 @@ websocat ws://localhost:4195/get/ws | xxd
 ffmpeg -i out.mp4 -vf "scale=1920:1080:flags=neighbor" -c:v libx264 -pix_fmt yuv420p -r 60 -vsync cfr out_1080p60.mp4
 ./start_telephone_game.sh
 uv run pbm_stream_to_ffmpeg.py out.mp4
+
+uv run python3 generate_pbm.py --count 100000

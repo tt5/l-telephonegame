@@ -16,11 +16,11 @@ from pathlib import Path
 
 import numpy as np
 
-from pbm_utils import parse_message, pbm_to_input
+from pbm_utils import parse_message, pbm_to_input2
 
 WS_URL = "ws://localhost:4195/get/ws"
 SCRIPT_DIR = Path(__file__).parent
-CLASSIFIER_PATH = SCRIPT_DIR / "mnist_model.onnx"
+CLASSIFIER_PATH = SCRIPT_DIR / "mnist2_model.onnx"
 GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
 LATENT_DIM = 16
 
@@ -272,25 +272,27 @@ async def main():
             else:
                 cls_out_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            # Listener: classify the PBM and generate its own CVAE output
-            cls_input = pbm_to_input(pixel_data, width=width, height=height)
+            # Listener: classify the PBM using mnist2 model (11 classes)
+            cls_input = pbm_to_input2(pixel_data, width=width, height=height)
             cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
-            cls_probs = cls_outputs[0][0]
-            exp_probs = np.exp(cls_probs - np.max(cls_probs))
+            cls_logits = cls_outputs[0][0]
+            exp_probs = np.exp(cls_logits - np.max(cls_logits))
             cls_probs = exp_probs / exp_probs.sum()
             predicted = int(np.argmax(cls_probs))
             confidence = cls_probs[predicted]
 
-            # Listener input image: what the classifier sees (after blur + invert)
-            listener_in_28x28 = cls_input[0, :, :, 0]
+            # Listener input image: the 28x28 binary image
+            listener_in_28x28 = cls_input[0]
 
             # Generate 28x28 from CVAE (retry until confident)
+            # If model predicted low_conf (10), use second-highest digit for CVAE
+            gen_label = predicted if predicted < 10 else int(np.argsort(cls_probs)[-2])
             listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
             candidate = listener_out_28x28
             for _ in range(50):
                 noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
                 label_oh = np.zeros((1, 10), dtype=np.float32)
-                label_oh[0, predicted] = 1.0
+                label_oh[0, gen_label] = 1.0
 
                 gen_inputs = {}
                 for inp in gen_session.get_inputs():
@@ -302,8 +304,8 @@ async def main():
                 gen_outputs = gen_session.run([gen_output_name], gen_inputs)
                 candidate = gen_outputs[0][0, :, :, 0]
 
-                # Classify the generated image
-                cls_in = candidate.reshape(1, 28, 28, 1).astype(np.float32)
+                # Classify the generated image (mnist2 expects 3D input)
+                cls_in = candidate.reshape(1, 28, 28).astype(np.float32)
                 cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
                 exp_p = np.exp(cls_out - np.max(cls_out))
                 gen_probs = exp_p / exp_p.sum()

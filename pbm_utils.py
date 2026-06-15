@@ -72,7 +72,7 @@ def decode_pbm(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
         for col_idx in range(width):
             byte_idx = row_start + col_idx // 8
             bit = (data[byte_idx] >> (7 - col_idx % 8)) & 1
-            grid[row_idx, col_idx] = bit
+            grid[row_idx, col_idx] = 1.0 - bit  # invert: P4 black=1 -> white digit=1
     return grid
 
 
@@ -120,10 +120,23 @@ def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
 
 
 def pbm_to_input(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
-    """Convert P4 PBM pixel data to (1, 28, 28, 1) float32 for the classifier."""
+    """Convert P4 PBM pixel data to (1, 28, 28, 1) float32 for the old mnist model."""
     grid = decode_pbm(data, width=width, height=height)
     upscaled = upscale(grid, 28, 28)  # 28x28 for MNIST
     return normalize_for_mnist(upscaled)
+
+
+def pbm_to_input2(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
+    """Convert P4 PBM pixel data to (1, 28, 28) float32 for the mnist2 model.
+
+    Upscales using nearest-neighbor (same as original pipeline).
+    Returns binary image (0.0 or 1.0), no blur.
+    """
+    grid = decode_pbm(data, width=width, height=height)
+    upscaled = upscale(grid, 28, 28)
+    # Binarize and reshape to (1, 28, 28) — no channel dimension, no blur
+    binary = (upscaled > 0.5).astype(np.float32)
+    return binary.reshape(1, 28, 28)
 
 
 def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -> bytes:

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""pbm_stream_to_ffmpeg.py
+"""pbm_stream_to_ffmpeg3.py
 
-Reads PBM frames from a websocket (with embedded original 28x28),
-classifies each frame, generates a new 28x28 image via CVAE,
-and displays original + generated side by side at 56x28.
+Stage 3 display. Reads PBM frames from a websocket (with embedded
+original 28x28), classifies each frame using mnist3 (12 classes),
+generates a new 28x28 image via cvae3, and displays original +
+generated side by side at 56x28.
 
-Message format:
-    [PBM: variable bytes][orig_size: 4 bytes big-endian uint32][orig_data: orig_size bytes]
+Usage:
+    uv run pbm_stream_to_ffmpeg3.py [output.mp4]
 """
 
 import asyncio
@@ -20,10 +21,10 @@ from pbm_utils import parse_message, pbm_to_input2
 
 WS_URL = "ws://localhost:4195/get/ws"
 SCRIPT_DIR = Path(__file__).parent
-CLASSIFIER_PATH = SCRIPT_DIR / "mnist2_model.onnx"
-GENERATOR_PATH = SCRIPT_DIR / "cvae2_generator.onnx"
+CLASSIFIER_PATH = SCRIPT_DIR / "mnist3_model.onnx"
+GENERATOR_PATH = SCRIPT_DIR / "cvae3_generator.onnx"
 LATENT_DIM = 16
-NUM_CLASSES = 11  # digits 0-9 + low_conf
+NUM_CLASSES = 12  # digits 0-9 + low_conf + low_conf_2
 
 # Parse --max-images from sys.argv at module level
 SAVED_COUNT = 0
@@ -71,12 +72,10 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
             gy = 0 * H + r
             offset = (gy * grid_w + gx) * 3
             if val < 128:
-                # Dark pixel → use highlight background color
                 out[offset] = bg_r
                 out[offset + 1] = bg_g
                 out[offset + 2] = bg_b
             else:
-                # Light pixel → keep the digit
                 out[offset] = val
                 out[offset + 1] = val
                 out[offset + 2] = val
@@ -95,7 +94,6 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
                 out[offset + 2] = val
 
     # Row 0: empty | cls_in (with highlight) | listener_in
-    # Fill cls_in cell with highlight background for dark pixels
     if cls_in_wrong:
         cls_bg_r, cls_bg_g, cls_bg_b = 255, 0, 0  # red
     elif cls_in_low:
@@ -128,19 +126,18 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
 
 
 def save_pbm(pixel_data, width, height, predicted_digit, confidence):
-    """Save PBM image to data/pbm directory (up to MAX_IMAGES)."""
+    """Save PBM image to data/pbm3 directory (up to MAX_IMAGES)."""
     global SAVED_COUNT, MAX_IMAGES
     if MAX_IMAGES is not None and SAVED_COUNT >= MAX_IMAGES:
         return
     import time
-    base = Path("data/pbm")
+    base = Path("data/pbm3")
     base.mkdir(parents=True, exist_ok=True)
     header = f"P4\n{width} {height}\n".encode("ascii")
     pbm_bytes = header + bytes(pixel_data)
     filename = f"{predicted_digit}_{confidence:.4f}_{int(time.time()*1000)}.pbm"
     (base / filename).write_bytes(pbm_bytes)
     SAVED_COUNT += 1
-    #print(f"  Saved PBM #{SAVED_COUNT}: {filename}", file=sys.stderr)
 
 
 async def main():
@@ -196,12 +193,12 @@ async def main():
         buf = bytearray()
         frame_count = 0
         while True:
+            print("frame count: ", frame_count)
             data = await ws.recv()
             if isinstance(data, str):
                 data = data.encode("latin-1")
             buf.extend(data)
 
-            # Need at least "P4\n" to find the header
             if len(buf) < 4:
                 continue
 
@@ -214,8 +211,6 @@ async def main():
                 buf.clear()
                 continue
 
-            # Message format: [pub_digit: 1][predicted: 1][confidence: 2][P4\n...]
-            # Find P4\n and go back 4 bytes to get the full message
             msg_start = idx - 4
             if msg_start < 0:
                 buf.clear()
@@ -227,13 +222,12 @@ async def main():
             assert width is not None and height is not None
 
             # Parse extended message: PBM + orig + cls_in + cls_out
-            # Each section: [size: 4 bytes BE uint32][data: size bytes]
             bytes_per_row = (width + 7) // 8
             pbm_data_bytes = bytes_per_row * height
             header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
             pbm_total = header_end + pbm_data_bytes
 
-            pos = idx + pbm_total  # current read position
+            pos = idx + pbm_total
 
             def read_section():
                 nonlocal pos
@@ -254,7 +248,7 @@ async def main():
             if orig_section is None or cls_in_section is None or cls_out_section is None:
                 break
 
-            msg_len = (pos - msg_start)  # total from publisher_digit start to end of cls_out
+            msg_len = (pos - msg_start)
             orig_data = orig_section
 
             # Reconstruct 28x28 images from message sections
@@ -273,7 +267,7 @@ async def main():
             else:
                 cls_out_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            # Listener: classify the PBM using mnist2 model (11 classes)
+            # Listener: classify the PBM using mnist3 model (12 classes)
             cls_input = pbm_to_input2(pixel_data, width=width, height=height)
             cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
             cls_logits = cls_outputs[0][0]
@@ -282,12 +276,10 @@ async def main():
             predicted = int(np.argmax(cls_probs))
             confidence = cls_probs[predicted]
 
-            # Listener input image: the 28x28 binary image
             listener_in_28x28 = cls_input[0]
 
             # Generate 28x28 from CVAE
-            # If model predicted low_conf (10), generate CVAE label 10 image
-            gen_label = predicted  # can be 0-10
+            gen_label = predicted  # can be 0-11
             listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
             candidate = listener_out_28x28
             for _ in range(50):
@@ -305,7 +297,6 @@ async def main():
                 gen_outputs = gen_session.run([gen_output_name], gen_inputs)
                 candidate = gen_outputs[0][0, :, :, 0]
 
-                # Classify the generated image (mnist2 expects 3D input)
                 cls_in = candidate.reshape(1, 28, 28).astype(np.float32)
                 cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
                 exp_p = np.exp(cls_out - np.max(cls_out))
@@ -319,12 +310,11 @@ async def main():
             else:
                 listener_out_28x28 = candidate
 
-            # Listener highlight: based on listener's prediction vs classifier_cvae's prediction
-            # (listener is compared to what classifier_cvae guessed, not the ground truth)
+            # Listener highlight: listener vs classifier_cvae
             wrong_guess = predicted != cls_predicted
             low_confidence = (predicted == cls_predicted) and (confidence < 0.6)
 
-            # cls_in highlight: based on classifier_cvae's prediction vs publisher digit
+            # cls_in highlight: classifier_cvae vs publisher
             cls_in_wrong = cls_predicted != publisher_digit
             cls_in_low = (cls_predicted == publisher_digit) and (cls_confidence < 0.6)
 
@@ -339,7 +329,6 @@ async def main():
             proc.stdin.flush()
 
             frame_count += 1
-            #print(f"Frame {frame_count:4d}  ground_truth={publisher_digit}  cls_cv={cls_predicted}({cls_confidence:.2f})  listener={predicted}({confidence:.2f})  cls_in={'OK' if cls_predicted == publisher_digit else 'WRONG'}  listener_in={'OK' if predicted == cls_predicted else 'WRONG'}", file=sys.stderr)
 
             buf = buf[idx + msg_len :]
 

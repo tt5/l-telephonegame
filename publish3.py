@@ -1,24 +1,33 @@
+#!/usr/bin/env python3
+"""publish3.py
+
+Stage 3 publisher. Generates digits 0-11 using cvae3 + mnist3,
+publishes to NATS subject "one".
+
+Usage:
+    uv run publish3.py
+"""
+
 import asyncio, time, logging
 from pathlib import Path
 
 import numpy as np
-from digits import make_p4
 from pbm_utils import downscale_to_pbm, pbm_to_input2, prepare_for_mnist2
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
 FPS = 2
 LATENT_DIM = 16
-NUM_CLASSES = 11  # digits 0-9 + low_conf
-GENERATOR_PATH = Path(__file__).parent / "cvae2_generator.onnx"
-CLASSIFIER_PATH = Path(__file__).parent / "mnist2_model.onnx"
+NUM_CLASSES = 12  # digits 0-9 + low_conf + low_conf_2
+GENERATOR_PATH = Path(__file__).parent / "cvae3_generator.onnx"
+CLASSIFIER_PATH = Path(__file__).parent / "mnist3_model.onnx"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("publisher")
+log = logging.getLogger("publisher3")
 
 
 def build_message(image_28x28: np.ndarray, publisher_digit: int, predicted: int, confidence: float) -> bytes:
@@ -51,14 +60,14 @@ async def main():
     cls_output_name = cls_session.get_outputs()[0].name
 
     nc = await nats.connect(NATS_URL)
-    log.info(f"Connected to {NATS_URL}, publishing digits 0-9 to '{SUBJECT}' at {FPS} fps (min confidence 70%)")
+    log.info(f"Connected to {NATS_URL}, publishing digits 0-11 to '{SUBJECT}' at {FPS} fps (min confidence 70%)")
 
     interval = 1.0 / FPS
     idx = 0
 
     try:
         while True:
-            digit = idx % 11
+            digit = idx % NUM_CLASSES
 
             # Generate until classifier confidence >= 70%
             predicted = digit
@@ -79,7 +88,7 @@ async def main():
                 gen_outputs = gen_session.run([gen_output_name], gen_inputs)
                 image_28x28 = gen_outputs[0][0, :, :, 0]
 
-                # Classify using mnist2 model (11 classes, 28x28 binary input)
+                # Classify using mnist3 model (12 classes, 28x28 binary input)
                 cls_input = prepare_for_mnist2(image_28x28)
                 cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})[0][0]
                 exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
@@ -88,9 +97,7 @@ async def main():
                 confidence = probs[predicted]
 
                 # Accept if predicted matches digit and confidence >= 70%
-                # (class 10 = low_conf is not accepted as matching any digit)
                 if predicted == digit and confidence >= 0.7:
-                    #log.info(f"  digit={digit}  conf={confidence:.2f}  attempt={attempt + 1}")
                     break
             else:
                 log.warning(f"  digit={digit}  failed to reach 70% confidence, using best")
@@ -99,7 +106,6 @@ async def main():
             payload = build_message(image_28x28, digit, predicted, confidence)
 
             await nc.publish(SUBJECT, payload)
-            #log.info(f"Published digit {digit} ({len(payload)} bytes)")
             idx += 1
             await asyncio.sleep(interval)
     except asyncio.CancelledError:

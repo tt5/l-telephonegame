@@ -139,6 +139,15 @@ def pbm_to_input2(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
     return binary.reshape(1, 28, 28)
 
 
+def prepare_for_mnist2(image_28x28: np.ndarray) -> np.ndarray:
+    """Prepare a 28x28 float32 image for the mnist2 model.
+
+    Binarizes and reshapes to (1, 28, 28).
+    """
+    binary = (image_28x28 > 0.5).astype(np.float32)
+    return binary.reshape(1, 28, 28)
+
+
 def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -> bytes:
     """Downscale a 28x28 float32 image to a binary PBM of the given size.
 

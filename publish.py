@@ -3,13 +3,15 @@ from pathlib import Path
 
 import numpy as np
 from digits import make_p4
-from pbm_utils import downscale_to_pbm
+from pbm_utils import downscale_to_pbm, pbm_to_input2, prepare_for_mnist2
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
 FPS = 2
 LATENT_DIM = 16
-GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
+NUM_CLASSES = 11  # digits 0-9 + low_conf
+GENERATOR_PATH = Path(__file__).parent / "cvae2_generator.onnx"
+CLASSIFIER_PATH = Path(__file__).parent / "mnist2_model.onnx"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +46,7 @@ async def main():
     gen_session = ort.InferenceSession(str(GENERATOR_PATH))
     gen_output_name = gen_session.get_outputs()[0].name
 
-    cls_session = ort.InferenceSession(str(Path(__file__).parent / "mnist_model.onnx"))
+    cls_session = ort.InferenceSession(str(CLASSIFIER_PATH))
     cls_input_name = cls_session.get_inputs()[0].name
     cls_output_name = cls_session.get_outputs()[0].name
 
@@ -64,7 +66,7 @@ async def main():
             image_28x28 = np.zeros((28, 28), dtype=np.float32)
             for attempt in range(50):
                 noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-                label_oh = np.zeros((1, 10), dtype=np.float32)
+                label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
                 label_oh[0, digit] = 1.0
 
                 gen_inputs = {}
@@ -77,14 +79,16 @@ async def main():
                 gen_outputs = gen_session.run([gen_output_name], gen_inputs)
                 image_28x28 = gen_outputs[0][0, :, :, 0]
 
-                # Classify the generated image directly
-                cls_input = image_28x28.reshape(1, 28, 28, 1).astype(np.float32)
+                # Classify using mnist2 model (11 classes, 28x28 binary input)
+                cls_input = prepare_for_mnist2(image_28x28)
                 cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})[0][0]
                 exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
                 probs = exp_probs / exp_probs.sum()
                 predicted = int(np.argmax(probs))
                 confidence = probs[predicted]
 
+                # Accept if predicted matches digit and confidence >= 70%
+                # (class 10 = low_conf is not accepted as matching any digit)
                 if predicted == digit and confidence >= 0.7:
                     log.info(f"  digit={digit}  conf={confidence:.2f}  attempt={attempt + 1}")
                     break

@@ -29,16 +29,7 @@ GENERATOR_PATH = SCRIPT_DIR / "cvae3_generator.onnx"
 LATENT_DIM = 16
 NUM_CLASSES = 12  # digits 0-9 + low_conf + low_conf_2
 
-# Parse --max-images from sys.argv at module level
-SAVED_COUNT = 0
-MAX_IMAGES = None
-_i = 1
-while _i < len(sys.argv):
-    if sys.argv[_i] == "--max-images" and _i + 1 < len(sys.argv):
-        MAX_IMAGES = int(sys.argv[_i + 1])
-        sys.argv = sys.argv[:_i] + sys.argv[_i + 2:]
-    else:
-        _i += 1
+# Parse --output from sys.argv at module level (video output path)
 
 
 def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
@@ -115,18 +106,8 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
 
 
 def save_pbm(pixel_data, width, height, predicted_digit, confidence):
-    """Save PBM image to data/pbm3 directory (up to MAX_IMAGES)."""
-    global SAVED_COUNT, MAX_IMAGES
-    if MAX_IMAGES is not None and SAVED_COUNT >= MAX_IMAGES:
-        return
-    import time as _time
-    base = Path("data/pbm3")
-    base.mkdir(parents=True, exist_ok=True)
-    header = f"P4\n{width} {height}\n".encode("ascii")
-    pbm_bytes = header + bytes(pixel_data)
-    filename = f"{predicted_digit}_{confidence:.4f}_{int(_time.time()*1000)}.pbm"
-    (base / filename).write_bytes(pbm_bytes)
-    SAVED_COUNT += 1
+    """No-op. Stage 3 does not save images."""
+    pass
 
 
 class Metrics:
@@ -174,10 +155,10 @@ class Metrics:
 
         print(f"\n--- Metrics @ {elapsed:.0f}s ---", file=sys.stderr)
         print(f"  Frames: {self.frame_count}  FPS: {fps:.1f}", file=sys.stderr)
-        print(f"  Red flags: {self.red_flags} ({100*self.red_flags/max(1,self.frame_count):.1f}%)", file=sys.stderr)
-        print(f"  Yellow flags: {self.yellow_flags} ({100*self.yellow_flags/max(1,self.frame_count):.1f}%)", file=sys.stderr)
-        print(f"  cls_in wrong: {self.cls_in_wrong} ({100*self.cls_in_wrong/max(1,self.frame_count):.1f}%)", file=sys.stderr)
-        print(f"  cls_in low: {self.cls_in_low} ({100*self.cls_in_low/max(1,self.frame_count):.1f}%)", file=sys.stderr)
+        print(f"  listener_in red (wrong guess): {self.red_flags} ({100*self.red_flags/max(1,self.frame_count):.1f}%)", file=sys.stderr)
+        print(f"  listener_in yellow (low conf): {self.yellow_flags} ({100*self.yellow_flags/max(1,self.frame_count):.1f}%)", file=sys.stderr)
+        print(f"  cls_in red (vs publisher):     {self.cls_in_wrong} ({100*self.cls_in_wrong/max(1,self.frame_count):.1f}%)", file=sys.stderr)
+        print(f"  cls_in yellow (vs publisher):  {self.cls_in_low} ({100*self.cls_in_low/max(1,self.frame_count):.1f}%)", file=sys.stderr)
         print(f"  Avg retries: {avg_retries:.1f}  Max retries: {max_retries}", file=sys.stderr)
 
         # Per-class distribution
@@ -392,9 +373,6 @@ async def main():
                 cls_in_low_flag=cls_in_low_flag,
                 retry_count=retry_count,
             )
-
-            if not wrong_guess:
-                save_pbm(pixel_data, width, height, predicted, confidence)
 
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,
                                  orig_28x28, cls_out_28x28, listener_out_28x28,

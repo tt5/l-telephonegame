@@ -176,12 +176,26 @@ if [ "$MODE" = "metrics" ] || [ "$MODE" = "skip" ]; then
 
     METRICS_DIR="$SCRIPT_DIR/metrics/$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$METRICS_DIR"
-    VIDEO_FILE="$METRICS_DIR/stage3_$(date +%Y%m%d_%H%M%S).mp4"
+    VIDEO_FILE="$SCRIPT_DIR/out.mp4"
 
-    # Patch pbm_stream_to_ffmpeg3.py to output metrics
-    METRICS_SCRIPT="$METRICS_DIR/pbm_stream_to_ffmpeg3_metrics.py"
-    sed 's|output_file = sys.argv\[1\] if len(sys.argv) > 1 else None|output_file = sys.argv[1] if len(sys.argv) > 1 else None  # metrics patch placeholder|' \
-        "$SCRIPT_DIR/pbm_stream_to_ffmpeg3.py" > "$METRICS_SCRIPT"
+    # Cleanup function for backend processes and their children
+    cleanup() {
+        echo ""
+        echo "  Cleaning up..."
+        # Kill timeout and its children first
+        kill $TIMEOUT_PID 2>/dev/null || true
+        # Kill all backend processes by name
+        pkill -f "nats-server" 2>/dev/null || true
+        pkill -f "ws_bridge.py" 2>/dev/null || true
+        pkill -f "publish3.py" 2>/dev/null || true
+        pkill -f "classifier_cvae3.py" 2>/dev/null || true
+        # Kill any remaining uv/python children
+        pkill -P $$ 2>/dev/null || true
+        wait 2>/dev/null || true
+        echo "  Done."
+        exit 1
+    }
+    trap cleanup INT TERM
 
     # Start backend
     cd "$SCRIPT_DIR"
@@ -201,7 +215,9 @@ if [ "$MODE" = "metrics" ] || [ "$MODE" = "skip" ]; then
 
     # Run display with video output for 2 minutes
     echo "  Recording video + metrics (120 seconds)..."
-    timeout 120 uv run pbm_stream_to_ffmpeg3.py "$VIDEO_FILE" > "$METRICS_DIR/pipeline.log" 2>&1 || true
+    timeout 120 uv run pbm_stream_to_ffmpeg3.py "$VIDEO_FILE" > "$METRICS_DIR/pipeline.log" 2>&1 &
+    TIMEOUT_PID=$!
+    wait $TIMEOUT_PID 2>/dev/null || true
 
     # Cleanup backend
     kill $CLASSIFIER_PID $PUBLISHER_PID $BRIDGE_PID $NATS_PID 2>/dev/null || true
@@ -210,6 +226,8 @@ if [ "$MODE" = "metrics" ] || [ "$MODE" = "skip" ]; then
     echo ""
     echo "  Video saved: $VIDEO_FILE"
     echo "  Pipeline log: $METRICS_DIR/pipeline.log"
+    echo "  Metrics summary:"
+    grep -A 50 "FINAL METRICS" "$METRICS_DIR/pipeline.log" 2>/dev/null || echo "  (check pipeline.log for details)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════
@@ -232,7 +250,7 @@ for f in mnist_model.onnx mnist2_model.onnx mnist3_model.onnx cvae_generator.onn
 done
 echo ""
 echo "  Data:"
-for d in pbm pbm2 pbm3; do
+for d in pbm pbm2; do
     count=$(ls "$SCRIPT_DIR/data/$d/"*.pbm 2>/dev/null | wc -l)
     echo "    data/$d/: $count images"
 done

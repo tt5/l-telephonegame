@@ -123,7 +123,8 @@ async def main():
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)
         candidate = image_28x28
-        for _ in range(500):
+        retry_count = 0
+        for retry_count in range(500):
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
             label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
             label_oh[0, gen_label] = 1.0
@@ -138,7 +139,6 @@ async def main():
             gen_outputs = gen_session.run([gen_output_name], gen_inputs)
             candidate = gen_outputs[0][0, :, :, 0]
 
-            # Classify the generated image (mnist3 expects 3D input)
             cls_in = candidate.reshape(1, 28, 28).astype(np.float32)
             cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
             exp_p = np.exp(cls_out - np.max(cls_out))
@@ -150,7 +150,7 @@ async def main():
                 image_28x28 = candidate
                 break
         else:
-            image_28x28 = candidate  # use last attempt even if below threshold
+            image_28x28 = candidate
 
         classifier_out_img = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
 
@@ -163,6 +163,8 @@ async def main():
         payload = build_message(pbm, passed_orig, classifier_in_img, classifier_out_img, publisher_digit, predicted, confidence)
 
         frame_count += 1
+        if frame_count % 100 == 0:
+            print(f"Classifier3 frame {frame_count}: pub={publisher_digit} pred={predicted} conf={confidence:.2f} retries={retry_count}", file=sys.stderr)
 
         await nc.publish(SUBJECT_OUT, payload)
 

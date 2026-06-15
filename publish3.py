@@ -106,6 +106,8 @@ async def main():
             payload = build_message(image_28x28, digit, predicted, confidence)
 
             await nc.publish(SUBJECT, payload)
+            if idx % 100 == 0:
+                log.info(f"Published {idx} frames, last: digit={digit} pred={predicted} conf={confidence:.2f} attempts={attempt+1}")
             idx += 1
             await asyncio.sleep(interval)
     except asyncio.CancelledError:

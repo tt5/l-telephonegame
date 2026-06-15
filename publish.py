@@ -7,7 +7,7 @@ from pbm_utils import downscale_to_pbm
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
-FPS = 2
+FPS = 10
 LATENT_DIM = 16
 GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
 
@@ -29,7 +29,7 @@ def build_message(image_28x28: np.ndarray, publisher_digit: int, predicted: int,
         [PBM: variable bytes]
         [orig_size: 4 bytes BE uint32][orig_data: orig_size bytes]
     """
-    pbm = downscale_to_pbm(image_28x28, width=10, height=10)
+    pbm = downscale_to_pbm(image_28x28, width=22, height=22)
     orig_bytes = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
     orig_size = len(orig_bytes).to_bytes(4, "big")
     conf_int = min(65535, max(0, int(confidence * 10000)))

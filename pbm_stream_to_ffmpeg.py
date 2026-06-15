@@ -136,7 +136,7 @@ async def main():
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-video_size", "84x56",
-            "-r", "2",
+            "-r", "10",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
@@ -289,9 +289,10 @@ async def main():
             else:
                 listener_out_28x28 = candidate
 
-            # Listener highlight: based on listener's prediction vs publisher digit
-            wrong_guess = predicted != publisher_digit
-            low_confidence = (predicted == publisher_digit) and (confidence < 0.6)
+            # Listener highlight: based on listener's prediction vs classifier_cvae's prediction
+            # (listener is compared to what classifier_cvae guessed, not the ground truth)
+            wrong_guess = predicted != cls_predicted
+            low_confidence = (predicted == cls_predicted) and (confidence < 0.6)
 
             # cls_in highlight: based on classifier_cvae's prediction vs publisher digit
             cls_in_wrong = cls_predicted != publisher_digit
@@ -306,7 +307,7 @@ async def main():
             proc.stdin.flush()
 
             frame_count += 1
-            print(f"Frame {frame_count:4d}  expected={publisher_digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == publisher_digit else 'WRONG'}]", file=sys.stderr)
+            print(f"Frame {frame_count:4d}  ground_truth={publisher_digit}  cls_cv={cls_predicted}({cls_confidence:.2f})  listener={predicted}({confidence:.2f})  cls_in={'OK' if cls_predicted == publisher_digit else 'WRONG'}  listener_in={'OK' if predicted == cls_predicted else 'WRONG'}", file=sys.stderr)
 
             buf = buf[idx + msg_len :]
 

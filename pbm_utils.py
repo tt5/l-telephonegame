@@ -115,7 +115,8 @@ def normalize_for_mnist(image: np.ndarray) -> np.ndarray:
     for y in range(h):
         for x in range(w):
             blurred[y, x] = np.sum(padded[y:y+3, x:x+3] * kernel)
-    return blurred.reshape(1, 28, 28, 1)
+    #return blurred.reshape(1, 28, 28, 1)
+    return image.reshape(1, 28, 28, 1)
 
 
 def pbm_to_input(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:

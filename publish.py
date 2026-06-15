@@ -7,7 +7,7 @@ from pbm_utils import downscale_to_pbm, pbm_to_input2, prepare_for_mnist2
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
-FPS = 2
+FPS = 30
 LATENT_DIM = 16
 NUM_CLASSES = 11  # digits 0-9 + low_conf
 GENERATOR_PATH = Path(__file__).parent / "cvae2_generator.onnx"
@@ -90,16 +90,16 @@ async def main():
                 # Accept if predicted matches digit and confidence >= 70%
                 # (class 10 = low_conf is not accepted as matching any digit)
                 if predicted == digit and confidence >= 0.7:
-                    log.info(f"  digit={digit}  conf={confidence:.2f}  attempt={attempt + 1}")
+                    #log.info(f"  digit={digit}  conf={confidence:.2f}  attempt={attempt + 1}")
                     break
             else:
-                log.warning(f"  digit={digit}  failed to reach 70% confidence after 50 attempts, using best")
+                log.warning(f"  digit={digit}  failed to reach 70% confidence, using best")
                 log.info(f"  digit={digit}  predicted={predicted}  conf={confidence:.2f}")
 
             payload = build_message(image_28x28, digit, predicted, confidence)
 
             await nc.publish(SUBJECT, payload)
-            log.info(f"Published digit {digit} ({len(payload)} bytes)")
+            #log.info(f"Published digit {digit} ({len(payload)} bytes)")
             idx += 1
             await asyncio.sleep(interval)
     except asyncio.CancelledError:

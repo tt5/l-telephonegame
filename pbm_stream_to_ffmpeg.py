@@ -140,7 +140,7 @@ def save_pbm(pixel_data, width, height, predicted_digit, confidence):
     filename = f"{predicted_digit}_{confidence:.4f}_{int(time.time()*1000)}.pbm"
     (base / filename).write_bytes(pbm_bytes)
     SAVED_COUNT += 1
-    print(f"  Saved PBM #{SAVED_COUNT}: {filename}", file=sys.stderr)
+    #print(f"  Saved PBM #{SAVED_COUNT}: {filename}", file=sys.stderr)
 
 
 async def main():
@@ -164,7 +164,7 @@ async def main():
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-video_size", "84x56",
-            "-r", "2",
+            "-r", "30",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
@@ -339,7 +339,7 @@ async def main():
             proc.stdin.flush()
 
             frame_count += 1
-            print(f"Frame {frame_count:4d}  ground_truth={publisher_digit}  cls_cv={cls_predicted}({cls_confidence:.2f})  listener={predicted}({confidence:.2f})  cls_in={'OK' if cls_predicted == publisher_digit else 'WRONG'}  listener_in={'OK' if predicted == cls_predicted else 'WRONG'}", file=sys.stderr)
+            #print(f"Frame {frame_count:4d}  ground_truth={publisher_digit}  cls_cv={cls_predicted}({cls_confidence:.2f})  listener={predicted}({confidence:.2f})  cls_in={'OK' if cls_predicted == publisher_digit else 'WRONG'}  listener_in={'OK' if predicted == cls_predicted else 'WRONG'}", file=sys.stderr)
 
             buf = buf[idx + msg_len :]
 

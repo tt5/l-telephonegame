@@ -69,7 +69,7 @@ def classify_mnist1(cls_session, cls_input_name, cls_output_name, image_28x28):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=100000, help="Target total number of images")
+    parser.add_argument("--count", type=int, default=50000, help="Target total number of images")
     parser.add_argument("--output-dir", type=str, default="data/pbm", help="Output directory")
     args = parser.parse_args()
 

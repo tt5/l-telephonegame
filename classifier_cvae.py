@@ -126,7 +126,7 @@ async def main():
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)
         candidate = image_28x28
-        for _ in range(50):
+        for _ in range(500):
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
             label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
             label_oh[0, gen_label] = 1.0
@@ -168,7 +168,7 @@ async def main():
 
         frame_count += 1
         prob_str = " ".join(f"{i}:{cls_probs[i]:.2f}" for i in range(10))
-        print(f"Frame {frame_count:4d}  expected={publisher_digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == publisher_digit else 'WRONG'}]  [{prob_str}]")
+        #print(f"Frame {frame_count:4d}  expected={publisher_digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == publisher_digit else 'WRONG'}]  [{prob_str}]")
 
         await nc.publish(SUBJECT_OUT, payload)
 

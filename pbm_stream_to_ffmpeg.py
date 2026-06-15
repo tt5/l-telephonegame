@@ -21,8 +21,9 @@ from pbm_utils import parse_message, pbm_to_input2
 WS_URL = "ws://localhost:4195/get/ws"
 SCRIPT_DIR = Path(__file__).parent
 CLASSIFIER_PATH = SCRIPT_DIR / "mnist2_model.onnx"
-GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
+GENERATOR_PATH = SCRIPT_DIR / "cvae2_generator.onnx"
 LATENT_DIM = 16
+NUM_CLASSES = 11  # digits 0-9 + low_conf
 
 # Parse --max-images from sys.argv at module level
 SAVED_COUNT = 0
@@ -291,7 +292,7 @@ async def main():
             candidate = listener_out_28x28
             for _ in range(50):
                 noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-                label_oh = np.zeros((1, 10), dtype=np.float32)
+                label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
                 label_oh[0, gen_label] = 1.0
 
                 gen_inputs = {}

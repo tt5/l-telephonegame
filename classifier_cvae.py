@@ -23,7 +23,9 @@ NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
 SUBJECT_OUT = "two"
 CLASSIFIER_PATH = Path(__file__).parent / "mnist2_model.onnx"
-GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
+GENERATOR_PATH = Path(__file__).parent / "cvae2_generator.onnx"
+LATENT_DIM = 16
+NUM_CLASSES = 11  # digits 0-9 + low_conf
 
 # Parse --max-images from sys.argv at module level (before ONNX runtime init)
 SAVED_COUNT = 0
@@ -131,7 +133,7 @@ async def main():
         candidate = image_28x28
         for _ in range(50):
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-            label_oh = np.zeros((1, 10), dtype=np.float32)
+            label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
             label_oh[0, gen_label] = 1.0
 
             gen_inputs = {}

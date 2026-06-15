@@ -9,7 +9,7 @@ NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
 FPS = 2
 LATENT_DIM = 16
-LOW_CONF_THRESHOLD = 0.95
+NUM_CLASSES = 11  # digits 0-9 + low_conf
 GENERATOR_PATH = Path(__file__).parent / "cvae2_generator.onnx"
 CLASSIFIER_PATH = Path(__file__).parent / "mnist2_model.onnx"
 

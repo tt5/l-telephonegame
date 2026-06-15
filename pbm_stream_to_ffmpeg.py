@@ -83,6 +83,9 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
 
     # Row 0: empty | classifier_in
     paste(cls_in, 1, 0)
+
+    # Row 1: original | classifier_out | listener_out
+    paste(orig, 0, 1)
     paste(cls_out, 1, 1)
     paste(listener_out, 2, 1)
 

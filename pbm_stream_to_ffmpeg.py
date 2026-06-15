@@ -115,10 +115,10 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
     return bytes(out)
 
 
-def save_pbm(pixel_data, width, height, predicted_digit, confidence, low_confidence=False):
+def save_pbm(pixel_data, width, height, predicted_digit, confidence):
     """Save PBM image to data/pbm directory.
 
-    Filename format: {predicted_digit}_{confidence}[_low_conf].pbm
+    Filename format: {predicted_digit}_{confidence}.pbm
     """
     import time
     base = Path("data/pbm")
@@ -126,9 +126,7 @@ def save_pbm(pixel_data, width, height, predicted_digit, confidence, low_confide
 
     header = f"P4\n{width} {height}\n".encode("ascii")
     pbm_bytes = header + bytes(pixel_data)
-    conf_str = f"{confidence:.4f}"
-    suffix = "_low_conf" if low_confidence else ""
-    filename = f"{predicted_digit}_{conf_str}{suffix}_{int(time.time()*1000)}.pbm"
+    filename = f"{predicted_digit}_{confidence:.4f}_{int(time.time()*1000)}.pbm"
     (base / filename).write_bytes(pbm_bytes)
 
 
@@ -317,7 +315,7 @@ async def main():
 
             # Save PBM images that are not red-flagged
             if not wrong_guess:
-                save_pbm(pixel_data, width, height, predicted, confidence, low_confidence=low_confidence)
+                save_pbm(pixel_data, width, height, predicted, confidence)
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,
                                  orig_28x28, cls_out_28x28, listener_out_28x28,
                                  wrong_guess=wrong_guess, low_confidence=low_confidence,

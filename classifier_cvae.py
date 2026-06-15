@@ -101,7 +101,7 @@ async def main():
         # Save PBM if not red-flagged (predicted matches publisher digit)
         if predicted == publisher_digit:
             low_conf = confidence < 0.6
-            save_pbm(pixel_data, width, height, predicted, confidence, low_confidence=low_conf)
+            save_pbm(pixel_data, width, height, predicted, confidence)
 
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)

@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from pbm_utils import PBM_HEADER, downscale_to_pbm, parse_message, pbm_to_input
+from pbm_stream_to_ffmpeg import save_pbm
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
@@ -96,6 +97,11 @@ async def main():
         cls_probs = exp_probs / exp_probs.sum()
         predicted = int(np.argmax(cls_probs))
         confidence = cls_probs[predicted]
+
+        # Save PBM if not red-flagged (predicted matches publisher digit)
+        if predicted == publisher_digit:
+            low_conf = confidence < 0.6
+            save_pbm(pixel_data, width, height, predicted, confidence, low_confidence=low_conf)
 
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)

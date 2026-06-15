@@ -58,7 +58,7 @@ async def main():
 
     try:
         while True:
-            digit = idx % 10
+            digit = idx % 11
 
             # Generate until classifier confidence >= 70%
             predicted = digit

@@ -285,9 +285,9 @@ async def main():
             # Listener input image: the 28x28 binary image
             listener_in_28x28 = cls_input[0]
 
-            # Generate 28x28 from CVAE (retry until confident)
-            # If model predicted low_conf (10), use second-highest digit for CVAE
-            gen_label = predicted if predicted < 10 else int(np.argsort(cls_probs)[-2])
+            # Generate 28x28 from CVAE
+            # If model predicted low_conf (10), generate CVAE label 10 image
+            gen_label = predicted  # can be 0-10
             listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
             candidate = listener_out_28x28
             for _ in range(50):

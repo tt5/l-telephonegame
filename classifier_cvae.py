@@ -115,18 +115,13 @@ async def main():
         predicted = int(np.argmax(cls_probs))
         confidence = cls_probs[predicted]
 
-        # Check if model predicted low_conf (class 10)
-        is_low_conf = (predicted == 10)
-        # For CVAE generation, use the actual digit (0-9), not low_conf
-        gen_label = predicted if predicted < 10 else int(np.argsort(cls_probs)[-2])
+        # If classifier predicted low_conf (10), generate CVAE label 10 image
+        # Otherwise use the predicted digit
+        gen_label = predicted  # can be 0-10
 
-        # Save PBM if not red-flagged
-        if not is_low_conf and predicted == publisher_digit:
+        # Save PBM if prediction matches publisher digit (including low_conf matching)
+        if predicted == publisher_digit:
             save_pbm(pixel_data, width, height, predicted, confidence)
-        elif is_low_conf:
-            digit_label = int(np.argsort(cls_probs)[-2])
-            if digit_label == publisher_digit:
-                save_pbm(pixel_data, width, height, digit_label, confidence)
 
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)

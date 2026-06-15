@@ -115,6 +115,23 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
     return bytes(out)
 
 
+def save_pbm(pixel_data, width, height, publisher_digit, cls_predicted, listener_predicted,
+             confidence, low_confidence=False):
+    """Save PBM image to data/pbm directory.
+
+    Filename format: {publisher_digit}_cls{cls_predicted}_listener{listener_predicted}_{confidence}.pbm
+    """
+    import time
+    base = Path("data/pbm")
+    base.mkdir(parents=True, exist_ok=True)
+
+    header = f"P4\n{width} {height}\n".encode("ascii")
+    pbm_bytes = header + bytes(pixel_data)
+    conf_str = f"{confidence:.4f}"
+    filename = f"{publisher_digit}_cls{cls_predicted}_listener{listener_predicted}_{conf_str}_{int(time.time()*1000)}.pbm"
+    (base / filename).write_bytes(pbm_bytes)
+
+
 async def main():
     import onnxruntime as ort
     import websockets
@@ -298,7 +315,10 @@ async def main():
             cls_in_wrong = cls_predicted != publisher_digit
             cls_in_low = (cls_predicted == publisher_digit) and (cls_confidence < 0.6)
 
-            # Composite 2x3 grid
+            # Save PBM images that are not red-flagged
+            if not wrong_guess:
+                save_pbm(pixel_data, width, height, publisher_digit, cls_predicted,
+                         predicted, confidence, low_confidence=low_confidence)
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,
                                  orig_28x28, cls_out_28x28, listener_out_28x28,
                                  wrong_guess=wrong_guess, low_confidence=low_confidence,

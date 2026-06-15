@@ -29,18 +29,24 @@ LATENT_DIM = 16
 PBM_TOTAL = len(PBM_HEADER) + 8  # header + 8 data bytes
 
 
-def build_message(pbm: bytes, orig_data: bytes, cls_in_img: bytes, cls_out_img: bytes, digit: int) -> bytes:
-    """Build output message: digit + PBM + original image + classifier input + classifier output.
+def build_message(pbm: bytes, orig_data: bytes, cls_in_img: bytes, cls_out_img: bytes,
+                    publisher_digit: int, predicted: int, confidence: float) -> bytes:
+    """Build output message: publisher_digit + predicted + confidence + PBM + orig + cls_in + cls_out.
 
     Format:
-        [digit: 1 byte]
+        [publisher_digit: 1 byte]
+        [predicted: 1 byte]
+        [confidence: 2 bytes BE uint16, scaled by 10000]
         [PBM: variable bytes]
         [orig_size: 4 bytes BE uint32][orig_data: orig_size bytes]
         [cls_in_size: 4 bytes BE uint32][cls_in_data: cls_in_size bytes]
         [cls_out_size: 4 bytes BE uint32][cls_out_data: cls_out_size bytes]
     """
     parts = bytearray()
-    parts += bytes([digit])
+    parts += bytes([publisher_digit])
+    parts += bytes([predicted])
+    conf_int = min(65535, max(0, int(confidence * 10000)))
+    parts += conf_int.to_bytes(2, "big")
     parts += pbm
     parts += len(orig_data).to_bytes(4, "big")
     parts += orig_data
@@ -74,8 +80,8 @@ async def main():
         nonlocal frame_count
         data = msg.data
 
-        digit, pixel_data, orig_data, width, height = parse_message(data)
-        if pixel_data is None:
+        publisher_digit, cls_predicted, cls_confidence, pixel_data, orig_data, width, height = parse_message(data)
+        if pixel_data is None or publisher_digit is None:
             return
         assert width is not None and height is not None
 
@@ -132,11 +138,11 @@ async def main():
             passed_orig = orig_data
         else:
             passed_orig = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
-        payload = build_message(pbm, passed_orig, classifier_in_img, classifier_out_img, predicted)
+        payload = build_message(pbm, passed_orig, classifier_in_img, classifier_out_img, publisher_digit, predicted, confidence)
 
         frame_count += 1
         prob_str = " ".join(f"{i}:{cls_probs[i]:.2f}" for i in range(10))
-        print(f"Frame {frame_count:4d}  expected={digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == digit else 'WRONG'}]  [{prob_str}]")
+        print(f"Frame {frame_count:4d}  expected={publisher_digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == publisher_digit else 'WRONG'}]  [{prob_str}]")
 
         await nc.publish(SUBJECT_OUT, payload)
 

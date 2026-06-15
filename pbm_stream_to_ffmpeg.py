@@ -26,7 +26,8 @@ LATENT_DIM = 16
 
 
 def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
-                    wrong_guess=False, low_confidence=False):
+                    wrong_guess=False, low_confidence=False,
+                    cls_in_wrong=False, cls_in_low=False):
     """Composite 5 images into a 2x3 grid (84x56) RGB24.
 
     Layout:
@@ -81,8 +82,30 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
                 out[offset + 1] = val
                 out[offset + 2] = val
 
-    # Row 0: empty | classifier_in
-    paste(cls_in, 1, 0)
+    # Row 0: empty | cls_in (with highlight) | listener_in
+    # Fill cls_in cell with highlight background for dark pixels
+    if cls_in_wrong:
+        cls_bg_r, cls_bg_g, cls_bg_b = 255, 0, 0  # red
+    elif cls_in_low:
+        cls_bg_r, cls_bg_g, cls_bg_b = 200, 200, 0  # yellow
+    else:
+        cls_bg_r, cls_bg_g, cls_bg_b = 0, 0, 0  # black
+
+    for r in range(H):
+        for c in range(W):
+            val = int(cls_in[r, c] * 255)
+            val = max(0, min(255, val))
+            gx = 1 * W + c
+            gy = 0 * H + r
+            offset = (gy * grid_w + gx) * 3
+            if val < 128:
+                out[offset] = cls_bg_r
+                out[offset + 1] = cls_bg_g
+                out[offset + 2] = cls_bg_b
+            else:
+                out[offset] = val
+                out[offset + 1] = val
+                out[offset + 2] = val
 
     # Row 1: original | classifier_out | listener_out
     paste(orig, 0, 1)
@@ -163,7 +186,14 @@ async def main():
                 buf.clear()
                 continue
 
-            digit, pixel_data, orig_data, width, height = parse_message(bytes(buf[idx - 1:]))
+            # Message format: [pub_digit: 1][predicted: 1][confidence: 2][P4\n...]
+            # Find P4\n and go back 4 bytes to get the full message
+            msg_start = idx - 4
+            if msg_start < 0:
+                buf.clear()
+                continue
+
+            publisher_digit, cls_predicted, cls_confidence, pixel_data, orig_data, width, height = parse_message(bytes(buf[msg_start:]))
             if pixel_data is None:
                 break
             assert width is not None and height is not None
@@ -196,7 +226,7 @@ async def main():
             if orig_section is None or cls_in_section is None or cls_out_section is None:
                 break
 
-            msg_len = (pos - idx) + 1  # +1 for the digit byte before P4\n
+            msg_len = (pos - msg_start)  # total from publisher_digit start to end of cls_out
             orig_data = orig_section
 
             # Reconstruct 28x28 images from message sections
@@ -259,18 +289,24 @@ async def main():
             else:
                 listener_out_28x28 = candidate
 
-            wrong_guess = predicted != digit
-            low_confidence = (predicted == digit) and (confidence < 0.6)
+            # Listener highlight: based on listener's prediction vs publisher digit
+            wrong_guess = predicted != publisher_digit
+            low_confidence = (predicted == publisher_digit) and (confidence < 0.6)
+
+            # cls_in highlight: based on classifier_cvae's prediction vs publisher digit
+            cls_in_wrong = cls_predicted != publisher_digit
+            cls_in_low = (cls_predicted == publisher_digit) and (cls_confidence < 0.6)
 
             # Composite 2x3 grid
             rgb = composite_grid(cls_in_28x28, listener_in_28x28,
                                  orig_28x28, cls_out_28x28, listener_out_28x28,
-                                 wrong_guess=wrong_guess, low_confidence=low_confidence)
+                                 wrong_guess=wrong_guess, low_confidence=low_confidence,
+                                 cls_in_wrong=cls_in_wrong, cls_in_low=cls_in_low)
             proc.stdin.write(rgb)
             proc.stdin.flush()
 
             frame_count += 1
-            print(f"Frame {frame_count:4d}  expected={digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == digit else 'WRONG'}]", file=sys.stderr)
+            print(f"Frame {frame_count:4d}  expected={publisher_digit}  predicted={predicted}  conf={confidence:.2f}  [{'MATCH' if predicted == publisher_digit else 'WRONG'}]", file=sys.stderr)
 
             buf = buf[idx + msg_len :]
 

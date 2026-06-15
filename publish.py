@@ -19,18 +19,21 @@ logging.basicConfig(
 log = logging.getLogger("publisher")
 
 
-def build_message(image_28x28: np.ndarray, digit: int) -> bytes:
-    """Build a message containing the digit + PBM + original 28x28 image.
+def build_message(image_28x28: np.ndarray, publisher_digit: int, predicted: int, confidence: float) -> bytes:
+    """Build a message containing publisher_digit + predicted + confidence + PBM + orig.
 
     Format:
-        [digit: 1 byte]
+        [publisher_digit: 1 byte]
+        [predicted: 1 byte]
+        [confidence: 2 bytes BE uint16, scaled by 10000]
         [PBM: variable bytes]
         [orig_size: 4 bytes BE uint32][orig_data: orig_size bytes]
     """
     pbm = downscale_to_pbm(image_28x28, width=10, height=10)
     orig_bytes = (image_28x28 * 255).clip(0, 255).astype(np.uint8).tobytes()
     orig_size = len(orig_bytes).to_bytes(4, "big")
-    return bytes([digit]) + pbm + orig_size + orig_bytes
+    conf_int = min(65535, max(0, int(confidence * 10000)))
+    return bytes([publisher_digit]) + bytes([predicted]) + conf_int.to_bytes(2, "big") + pbm + orig_size + orig_bytes
 
 
 async def main():
@@ -89,7 +92,7 @@ async def main():
                 log.warning(f"  digit={digit}  failed to reach 70% confidence after 50 attempts, using best")
                 log.info(f"  digit={digit}  predicted={predicted}  conf={confidence:.2f}")
 
-            payload = build_message(image_28x28, predicted)
+            payload = build_message(image_28x28, digit, predicted, confidence)
 
             await nc.publish(SUBJECT, payload)
             log.info(f"Published digit {digit} ({len(payload)} bytes)")

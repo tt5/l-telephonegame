@@ -166,7 +166,7 @@ def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -
             c_end = min(c_start + base_w + (1 if c < extra_w else 0), src_w)
             grid[r, c] = image_28x28[r_start:r_end, c_start:c_end].mean()
 
-    binary = (grid > 0.5).astype(np.uint8)
+    binary = (grid <= 0.5).astype(np.uint8)  # invert: P4 bit=0 is white (foreground), bit=1 is black (background)
 
     header = f"P4\n{width} {height}\n".encode("ascii")
     buf = bytearray(header)

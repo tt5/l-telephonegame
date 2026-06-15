@@ -22,8 +22,19 @@ from pbm_stream_to_ffmpeg import save_pbm
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
 SUBJECT_OUT = "two"
-CLASSIFIER_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "mnist_model.onnx"
-GENERATOR_PATH = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(__file__).parent / "cvae_generator.onnx"
+CLASSIFIER_PATH = Path(__file__).parent / "mnist_model.onnx"
+GENERATOR_PATH = Path(__file__).parent / "cvae_generator.onnx"
+
+# Parse --max-images from sys.argv at module level (before ONNX runtime init)
+SAVED_COUNT = 0
+_MAX_IMAGES = None
+_i = 1
+while _i < len(sys.argv):
+    if sys.argv[_i] == "--max-images" and _i + 1 < len(sys.argv):
+        _MAX_IMAGES = int(sys.argv[_i + 1])
+        sys.argv = sys.argv[:_i] + sys.argv[_i + 2:]
+    else:
+        _i += 1
 
 LATENT_DIM = 16
 
@@ -73,6 +84,10 @@ async def main():
 
     nc = await nats.connect(NATS_URL)
     print(f"Connected to {NATS_URL}")
+    if _MAX_IMAGES is not None:
+        import pbm_stream_to_ffmpeg as _pbm_mod
+        _pbm_mod.MAX_IMAGES = _MAX_IMAGES
+        print(f"Max PBM images to save: {_MAX_IMAGES}")
     print(f"Subscribed to '{SUBJECT_IN}', publishing to '{SUBJECT_OUT}'")
 
     frame_count = 0

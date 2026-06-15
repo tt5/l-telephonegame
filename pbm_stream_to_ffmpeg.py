@@ -24,6 +24,17 @@ CLASSIFIER_PATH = SCRIPT_DIR / "mnist_model.onnx"
 GENERATOR_PATH = SCRIPT_DIR / "cvae_generator.onnx"
 LATENT_DIM = 16
 
+# Parse --max-images from sys.argv at module level
+SAVED_COUNT = 0
+MAX_IMAGES = None
+_i = 1
+while _i < len(sys.argv):
+    if sys.argv[_i] == "--max-images" and _i + 1 < len(sys.argv):
+        MAX_IMAGES = int(sys.argv[_i + 1])
+        sys.argv = sys.argv[:_i] + sys.argv[_i + 2:]
+    else:
+        _i += 1
+
 
 def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
                     wrong_guess=False, low_confidence=False,
@@ -116,18 +127,19 @@ def composite_grid(cls_in, listener_in, orig, cls_out, listener_out,
 
 
 def save_pbm(pixel_data, width, height, predicted_digit, confidence):
-    """Save PBM image to data/pbm directory.
-
-    Filename format: {predicted_digit}_{confidence}.pbm
-    """
+    """Save PBM image to data/pbm directory (up to MAX_IMAGES)."""
+    global SAVED_COUNT, MAX_IMAGES
+    if MAX_IMAGES is not None and SAVED_COUNT >= MAX_IMAGES:
+        return
     import time
     base = Path("data/pbm")
     base.mkdir(parents=True, exist_ok=True)
-
     header = f"P4\n{width} {height}\n".encode("ascii")
     pbm_bytes = header + bytes(pixel_data)
     filename = f"{predicted_digit}_{confidence:.4f}_{int(time.time()*1000)}.pbm"
     (base / filename).write_bytes(pbm_bytes)
+    SAVED_COUNT += 1
+    print(f"  Saved PBM #{SAVED_COUNT}: {filename}", file=sys.stderr)
 
 
 async def main():

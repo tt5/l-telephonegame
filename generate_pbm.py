@@ -148,27 +148,75 @@ def main():
         good_digits = digits[mask]
         generated += batch_target
 
-        # --- Process each accepted image: downscale, upscale, re-classify, save ---
+        # --- Process each accepted image: downscale, upscale, batch re-classify, save ---
+        # First pass: downscale + upscale all accepted images
+        accepted_pbm = []
+        accepted_digits = []
+        accepted_input_tensors = []
         for i in range(len(good_images)):
             image_28x28 = good_images[i]
             digit = int(good_digits[i])
-
-            # Downscale 28x28 -> 22x22 PBM
             pbm_bytes = downscale_to_pbm(image_28x28, width=22, height=22)
-
-            # Upscale 22x22 -> 28x28 and classify again
             pbm_pixel_data = pbm_bytes[9:]  # strip P4\n22 22\n header (9 bytes)
             input_tensor = pbm_to_input2(pbm_pixel_data, width=22, height=22)
-            cls_out = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
-            exp_p = np.exp(cls_out - np.max(cls_out))
-            final_probs = exp_p / exp_p.sum()
-            final_predicted = int(np.argmax(final_probs))
-            final_confidence = float(final_probs[final_predicted])
+            accepted_pbm.append(pbm_bytes)
+            accepted_digits.append(digit)
+            accepted_input_tensors.append(input_tensor)
 
-            # Red flag check
-            if final_predicted != digit:
-                red_flags += 1
-                if generated % 1000 < batch_target:
+        # Batch classify all upscaled images at once
+        if accepted_input_tensors:
+            batch_cls_input = np.stack(accepted_input_tensors, axis=0)  # (G, 1, 28, 28)
+            # Squeeze the extra dim from pbm_to_input2: (1, 28, 28) -> stack keeps (G, 1, 28, 28)
+            # But mnist expects (batch, 28, 28), so squeeze
+            batch_cls_input = batch_cls_input[:, 0, :, :]  # (G, 28, 28)
+            batch_cls_logits = cls_session.run([cls_output_name], {cls_input_name: batch_cls_input})[0]  # (G, 10)
+            batch_exp = np.exp(batch_cls_logits - batch_cls_logits.max(axis=1, keepdims=True))
+            batch_probs = batch_exp / batch_exp.sum(axis=1, keepdims=True)
+            batch_preds = np.argmax(batch_probs, axis=1)
+            batch_confs = batch_probs[np.arange(len(batch_preds)), batch_preds]
+
+            # Second pass: red flag check + save using batched results
+            for i in range(len(accepted_pbm)):
+                digit = accepted_digits[i]
+                pbm_bytes = accepted_pbm[i]
+                final_predicted = int(batch_preds[i])
+                final_confidence = float(batch_confs[i])
+
+                # Red flag check
+                if final_predicted != digit:
+                    red_flags += 1
+                    if generated % 1000 < batch_target:
+                        elapsed = time.time() - start_time
+                        rate = generated / elapsed
+                        total_saved = high_saved + low_saved
+                        total_need = high_need + low_need
+                        print(f"  Generated {generated} ({rate:.0f} img/s) | "
+                              f"Saved {total_saved}/{total_need} "
+                              f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
+                              f"| red_flags={red_flags} "
+                              f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
+                              f"| [RED FLAG]")
+                    continue
+
+                # Save based on target ratio
+                is_high = final_confidence >= CONF_THRESHOLD
+
+                if is_high and high_saved < high_need:
+                    save = True
+                    high_saved += 1
+                elif not is_high and low_saved < low_need:
+                    save = True
+                    low_saved += 1
+                else:
+                    save = False
+
+                if save:
+                    conf_int = min(65535, max(0, int(final_confidence * 10000)))
+                    filename = f"{final_predicted}_{conf_int:04d}_{int(time.time()*1000000):016d}.pbm"
+                    (out_dir / filename).write_bytes(pbm_bytes)
+
+                # Progress report
+                if (high_saved + low_saved) % 500 < 1 and (high_saved + low_saved) > 0:
                     elapsed = time.time() - start_time
                     rate = generated / elapsed
                     total_saved = high_saved + low_saved
@@ -178,39 +226,8 @@ def main():
                           f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
                           f"| red_flags={red_flags} "
                           f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
-                          f"| [RED FLAG]")
-                continue
-
-            # Save based on target ratio
-            is_high = final_confidence >= CONF_THRESHOLD
-
-            if is_high and high_saved < high_need:
-                save = True
-                high_saved += 1
-            elif not is_high and low_saved < low_need:
-                save = True
-                low_saved += 1
-            else:
-                save = False
-
-            if save:
-                conf_int = min(65535, max(0, int(final_confidence * 10000)))
-                filename = f"{final_predicted}_{conf_int:04d}_{int(time.time()*1000000):016d}.pbm"
-                (out_dir / filename).write_bytes(pbm_bytes)
-
-            # Progress report
-            if (high_saved + low_saved) % 500 < 1 and (high_saved + low_saved) > 0:
-                elapsed = time.time() - start_time
-                rate = generated / elapsed
-                total_saved = high_saved + low_saved
-                total_need = high_need + low_need
-                print(f"  Generated {generated} ({rate:.0f} img/s) | "
-                      f"Saved {total_saved}/{total_need} "
-                      f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
-                      f"| red_flags={red_flags} "
-                      f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
-                      f"| batch_yield={len(good_images)}/{batch_target} "
-                      f"{'[SAVED]' if save else '[skipped]'}")
+                          f"| batch_yield={len(good_images)}/{batch_target} "
+                          f"{'[SAVED]' if save else '[skipped]'}")
 
     elapsed = time.time() - start_time
     final_high, final_low = count_by_confidence(out_dir)

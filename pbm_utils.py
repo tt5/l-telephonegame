@@ -54,25 +54,15 @@ def parse_message(data: bytes):
 
 
 def decode_pbm(data: bytes, width: int = 8, height: int = 8) -> np.ndarray:
-    """Decode raw P4 PBM pixel data into a float32 grid of shape (height, width).
-
-    Args:
-        data: Raw PBM pixel bytes (without header). Must contain enough bytes
-              for the given width and height (bytes per row = ceil(width / 8)).
-        width: Image width in pixels. Default 8.
-        height: Image height in pixels. Default 8.
-    """
+    """Decode raw P4 PBM pixel data into a float32 grid of shape (height, width)."""
     bytes_per_row = (width + 7) // 8
-    grid = np.zeros((height, width), dtype=np.float32)
     expected = bytes_per_row * height
     if len(data) < expected:
         raise ValueError(f"Need {expected} bytes for {width}x{height} PBM, got {len(data)}")
-    for row_idx in range(height):
-        row_start = row_idx * bytes_per_row
-        for col_idx in range(width):
-            byte_idx = row_start + col_idx // 8
-            bit = (data[byte_idx] >> (7 - col_idx % 8)) & 1
-            grid[row_idx, col_idx] = 1.0 - bit  # invert: P4 black=1 -> white digit=1
+    # Vectorized bit unpacking: expand each byte to 8 bits, then reshape
+    bits = np.unpackbits(np.frombuffer(data[:expected], dtype=np.uint8))  # (bytes_per_row * height * 8,)
+    # Reshape to (height, bytes_per_row * 8) then slice to width
+    grid = 1.0 - bits.reshape(height, bytes_per_row * 8)[:, :width].astype(np.float32)
     return grid
 
 
@@ -85,17 +75,15 @@ def upscale(grid: np.ndarray, dst_h: int, dst_w: int) -> np.ndarray:
     src_h, src_w = grid.shape
     if dst_h < src_h or dst_w < src_w:
         raise ValueError(f"dst ({dst_h}x{dst_w}) must be >= src ({src_h}x{src_w})")
-    out = np.zeros((dst_h, dst_w), dtype=np.float32)
     base_h, extra_h = divmod(dst_h, src_h)
     base_w, extra_w = divmod(dst_w, src_w)
-    for r in range(src_h):
-        for c in range(src_w):
-            r_start = r * base_h + min(r, extra_h)
-            c_start = c * base_w + min(c, extra_w)
-            r_end = min(r_start + base_h + (1 if r < extra_h else 0), dst_h)
-            c_end = min(c_start + base_w + (1 if c < extra_w else 0), dst_w)
-            out[r_start:r_end, c_start:c_end] = grid[r, c]
-    return out
+    # Compute repeat count for each source row/column
+    row_repeats = np.full(src_h, base_h, dtype=int)
+    row_repeats[:extra_h] += 1
+    col_repeats = np.full(src_w, base_w, dtype=int)
+    col_repeats[:extra_w] += 1
+    # Nearest-neighbor upscale via repeat
+    return grid.repeat(row_repeats, axis=0).repeat(col_repeats, axis=1)
 
 
 def normalize_for_mnist(image: np.ndarray) -> np.ndarray:

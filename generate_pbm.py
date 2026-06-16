@@ -27,7 +27,7 @@ import numpy as np
 import onnxruntime as ort
 from pathlib import Path
 
-from pbm_utils import downscale_to_pbm, pbm_to_input
+from pbm_utils import downscale_to_pbm, pbm_to_input2
 
 LATENT_DIM = 16
 NUM_CLASSES = 10  # digits 0-9 (stage 1, no low_conf)
@@ -57,8 +57,8 @@ def count_by_confidence(out_dir: Path):
 
 def classify_mnist1(cls_session, cls_input_name, cls_output_name, image_28x28):
     """Classify a 28x28 float32 image with mnist1 model. Returns (predicted, confidence)."""
-    # mnist1 expects (1, 28, 28, 1) float32 — binarize and reshape
-    input_tensor = image_28x28.reshape(1, 28, 28, 1).astype(np.float32)
+    # mnist1 expects (1, 28, 28) float32 — no channel dimension
+    input_tensor = image_28x28.reshape(1, 28, 28).astype(np.float32)
     cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
     exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
     probs = exp_probs / exp_probs.sum()
@@ -69,7 +69,7 @@ def classify_mnist1(cls_session, cls_input_name, cls_output_name, image_28x28):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=50000, help="Target total number of images")
+    parser.add_argument("--count", type=int, default=10000, help="Target total number of images")
     parser.add_argument("--output-dir", type=str, default="data/pbm", help="Output directory")
     args = parser.parse_args()
 
@@ -148,7 +148,7 @@ def main():
         # --- Step 3: Upscale 22x22 -> 28x28 and classify again ---
         # pbm_to_input decodes raw pixel data, upscales to 28x28, and normalizes
         pbm_pixel_data = pbm_bytes[9:]  # strip P4\n22 22\n header (9 bytes)
-        input_tensor = pbm_to_input(pbm_pixel_data, width=22, height=22)
+        input_tensor = pbm_to_input2(pbm_pixel_data, width=22, height=22)
         cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
         exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
         probs = exp_probs / exp_probs.sum()

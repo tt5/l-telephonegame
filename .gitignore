@@ -8,3 +8,4 @@ one.config
 data
 notes2.md
 metrics
+**/*.onnx

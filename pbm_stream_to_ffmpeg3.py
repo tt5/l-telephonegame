@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """pbm_stream_to_ffmpeg3.py
 
-Stage 3 display. Reads PBM frames from a websocket (with embedded
-original 28x28), classifies each frame using mnist3 (12 classes),
-generates a new 28x28 image via cvae3, and displays original +
-generated side by side at 56x28.
+Stage 3 display. Reads PBM frames directly from NATS subject "two",
+classifies each frame using mnist3, generates a new image via cvae3,
+and displays original + generated side by side at 56x28.
 
 Collects metrics: FPS, red/yellow flags, retries, per-class distribution.
 
@@ -22,12 +21,18 @@ import numpy as np
 
 from pbm_utils import parse_message, pbm_to_input2
 
-WS_URL = "ws://localhost:4195/get/ws"
+NATS_URL = "nats://127.0.0.1:4222"
+SUBJECT_OUT = "two"  # classifier output subject
 SCRIPT_DIR = Path(__file__).parent
 CLASSIFIER_PATH = SCRIPT_DIR / "mnist3_model.onnx"
 GENERATOR_PATH = SCRIPT_DIR / "cvae3_generator.onnx"
 LATENT_DIM = 16
-NUM_CLASSES = 12  # digits 0-9 + low_conf + low_conf_2
+
+# Derive num_classes from model output shape
+import onnxruntime as ort
+_cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))
+NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]  # e.g. 12 for stage 3
+del _cls_tmp
 
 # Parse --output from sys.argv at module level (video output path)
 
@@ -190,8 +195,8 @@ class Metrics:
 
 
 async def main():
+    import nats
     import onnxruntime as ort
-    import websockets
 
     metrics = Metrics()
 
@@ -239,153 +244,135 @@ async def main():
         bufsize=0,
     )
 
-    print(f"Connecting to {WS_URL}")
-    async with websockets.connect(WS_URL) as ws:
-        buf = bytearray()
-        while True:
-            data = await ws.recv()
-            if isinstance(data, str):
-                data = data.encode("latin-1")
-            buf.extend(data)
+    # Subscribe directly to NATS subject "two" (classifier output)
+    nc = await nats.connect(NATS_URL)
+    print(f"Connected to {NATS_URL}, subscribing to '{SUBJECT_OUT}'")
 
-            if len(buf) < 4:
-                continue
+    async def on_msg(msg):
+        data = msg.data
 
-            idx = buf.find(b"P4\n")
-            if idx == -1:
-                buf.clear()
-                continue
+        publisher_digit, cls_predicted, cls_confidence, pixel_data, orig_data, width, height = parse_message(data)
+        if pixel_data is None or publisher_digit is None:
+            return
+        assert width is not None and height is not None
 
-            if idx == 0:
-                buf.clear()
-                continue
+        # Parse extra sections after orig_data: cls_in and cls_out
+        # Message format: [header][PBM][orig_size:4][orig][cls_in_size:4][cls_in][cls_out_size:4][cls_out]
+        bytes_per_row = (width + 7) // 8
+        pbm_data_bytes = bytes_per_row * height
+        pbm_end = data.index(b"\n", data.index(b"P4\n") + 3) + 1 + pbm_data_bytes
 
-            msg_start = idx - 4
-            if msg_start < 0:
-                buf.clear()
-                continue
+        pos = pbm_end
+        def read_section():
+            nonlocal pos
+            if len(data) < pos + 4:
+                return None
+            size = int.from_bytes(data[pos:pos+4], "big")
+            pos += 4
+            if len(data) < pos + size:
+                return None
+            section = data[pos:pos+size]
+            pos += size
+            return section
 
-            publisher_digit, cls_predicted, cls_confidence, pixel_data, orig_data, width, height = parse_message(bytes(buf[msg_start:]))
-            if pixel_data is None:
-                break
-            assert width is not None and height is not None
+        read_section()  # skip orig_section (already parsed by parse_message)
+        cls_in_section = read_section()
+        cls_out_section = read_section()
 
-            bytes_per_row = (width + 7) // 8
-            pbm_data_bytes = bytes_per_row * height
-            header_end = bytes(buf[idx:]).index(b"\n", 3) + 1
-            pbm_total = header_end + pbm_data_bytes
+        if orig_data is not None and len(orig_data) == 784:
+            orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+        else:
+            orig_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            pos = idx + pbm_total
+        if cls_in_section is not None and len(cls_in_section) == 784:
+            cls_in_28x28 = np.frombuffer(cls_in_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+        else:
+            cls_in_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            def read_section():
-                nonlocal pos
-                if len(buf) < pos + 4:
-                    return None
-                size = int.from_bytes(bytes(buf[pos : pos + 4]), "big")
-                pos += 4
-                if len(buf) < pos + size:
-                    return None
-                data = bytes(buf[pos : pos + size])
-                pos += size
-                return data
+        if cls_out_section is not None and len(cls_out_section) == 784:
+            cls_out_28x28 = np.frombuffer(cls_out_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
+        else:
+            cls_out_28x28 = np.zeros((28, 28), dtype=np.float32)
 
-            orig_section = read_section()
-            cls_in_section = read_section()
-            cls_out_section = read_section()
+        cls_input = pbm_to_input2(pixel_data, width=width, height=height)
+        cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
+        cls_logits = cls_outputs[0][0]
+        exp_probs = np.exp(cls_logits - np.max(cls_logits))
+        cls_probs = exp_probs / exp_probs.sum()
+        predicted = int(np.argmax(cls_probs))
+        confidence = cls_probs[predicted]
 
-            if orig_section is None or cls_in_section is None or cls_out_section is None:
-                break
+        listener_in_28x28 = cls_input[0]
 
-            msg_len = (pos - msg_start)
-            orig_data = orig_section
+        gen_label = predicted
+        listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
+        candidate = listener_out_28x28
+        retry_count = 0
+        for retry_count in range(50):
+            noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+            label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
+            label_oh[0, gen_label] = 1.0
 
-            if orig_data is not None and len(orig_data) == 784:
-                orig_28x28 = np.frombuffer(orig_data, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
-            else:
-                orig_28x28 = np.zeros((28, 28), dtype=np.float32)
+            gen_inputs = {}
+            for inp in gen_session.get_inputs():
+                if "latent" in inp.name.lower():
+                    gen_inputs[inp.name] = noise
+                elif "label" in inp.name.lower():
+                    gen_inputs[inp.name] = label_oh
 
-            if cls_in_section is not None and len(cls_in_section) == 784:
-                cls_in_28x28 = np.frombuffer(cls_in_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
-            else:
-                cls_in_28x28 = np.zeros((28, 28), dtype=np.float32)
+            gen_outputs = gen_session.run([gen_output_name], gen_inputs)
+            candidate = gen_outputs[0][0, :, :, 0]
 
-            if cls_out_section is not None and len(cls_out_section) == 784:
-                cls_out_28x28 = np.frombuffer(cls_out_section, dtype=np.uint8).reshape(28, 28).astype(np.float32) / 255.0
-            else:
-                cls_out_28x28 = np.zeros((28, 28), dtype=np.float32)
+            cls_in = candidate.reshape(1, 28, 28).astype(np.float32)
+            cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
+            exp_p = np.exp(cls_out - np.max(cls_out))
+            gen_probs = exp_p / exp_p.sum()
+            gen_predicted = int(np.argmax(gen_probs))
+            gen_confidence = gen_probs[gen_predicted]
 
-            cls_input = pbm_to_input2(pixel_data, width=width, height=height)
-            cls_outputs = cls_session.run([cls_output_name], {cls_input_name: cls_input})
-            cls_logits = cls_outputs[0][0]
-            exp_probs = np.exp(cls_logits - np.max(cls_logits))
-            cls_probs = exp_probs / exp_probs.sum()
-            predicted = int(np.argmax(cls_probs))
-            confidence = cls_probs[predicted]
-
-            listener_in_28x28 = cls_input[0]
-
-            gen_label = predicted
-            listener_out_28x28 = np.zeros((28, 28), dtype=np.float32)
-            candidate = listener_out_28x28
-            retry_count = 0
-            for retry_count in range(50):
-                noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-                label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
-                label_oh[0, gen_label] = 1.0
-
-                gen_inputs = {}
-                for inp in gen_session.get_inputs():
-                    if "latent" in inp.name.lower():
-                        gen_inputs[inp.name] = noise
-                    elif "label" in inp.name.lower():
-                        gen_inputs[inp.name] = label_oh
-
-                gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-                candidate = gen_outputs[0][0, :, :, 0]
-
-                cls_in = candidate.reshape(1, 28, 28).astype(np.float32)
-                cls_out = cls_session.run([cls_output_name], {cls_input_name: cls_in})[0][0]
-                exp_p = np.exp(cls_out - np.max(cls_out))
-                gen_probs = exp_p / exp_p.sum()
-                gen_predicted = int(np.argmax(gen_probs))
-                gen_confidence = gen_probs[gen_predicted]
-
-                if gen_predicted == predicted and gen_confidence >= 0.7:
-                    listener_out_28x28 = candidate
-                    break
-            else:
+            if gen_predicted == predicted and gen_confidence >= 0.7:
                 listener_out_28x28 = candidate
+                break
+        else:
+            listener_out_28x28 = candidate
 
-            wrong_guess = predicted != cls_predicted
-            low_confidence_flag = (predicted == cls_predicted) and (confidence < 0.6)
-            cls_in_wrong_flag = cls_predicted != publisher_digit
-            cls_in_low_flag = (cls_predicted == publisher_digit) and (cls_confidence < 0.6)
+        wrong_guess = predicted != cls_predicted
+        low_confidence_flag = (predicted == cls_predicted) and (confidence < 0.6)
+        cls_in_wrong_flag = cls_predicted != publisher_digit
+        cls_in_low_flag = (cls_predicted == publisher_digit) and (cls_confidence < 0.6)
 
-            metrics.record(
-                publisher_digit=publisher_digit,
-                predicted=predicted,
-                confidence=confidence,
-                cls_predicted=cls_predicted,
-                cls_confidence=cls_confidence,
-                wrong_guess=wrong_guess,
-                low_confidence_flag=low_confidence_flag,
-                cls_in_wrong_flag=cls_in_wrong_flag,
-                cls_in_low_flag=cls_in_low_flag,
-                retry_count=retry_count,
-            )
+        metrics.record(
+            publisher_digit=publisher_digit,
+            predicted=predicted,
+            confidence=confidence,
+            cls_predicted=cls_predicted,
+            cls_confidence=cls_confidence,
+            wrong_guess=wrong_guess,
+            low_confidence_flag=low_confidence_flag,
+            cls_in_wrong_flag=cls_in_wrong_flag,
+            cls_in_low_flag=cls_in_low_flag,
+            retry_count=retry_count,
+        )
 
-            rgb = composite_grid(cls_in_28x28, listener_in_28x28,
-                                 orig_28x28, cls_out_28x28, listener_out_28x28,
-                                 wrong_guess=wrong_guess, low_confidence=low_confidence_flag,
-                                 cls_in_wrong=cls_in_wrong_flag, cls_in_low=cls_in_low_flag)
-            proc.stdin.write(rgb)
-            proc.stdin.flush()
+        rgb = composite_grid(cls_in_28x28, listener_in_28x28,
+                             orig_28x28, cls_out_28x28, listener_out_28x28,
+                             wrong_guess=wrong_guess, low_confidence=low_confidence_flag,
+                             cls_in_wrong=cls_in_wrong_flag, cls_in_low=cls_in_low_flag)
+        proc.stdin.write(rgb)
+        proc.stdin.flush()
 
-            buf = buf[idx + msg_len :]
+    sub = await nc.subscribe(SUBJECT_OUT, cb=on_msg)
 
-    proc.stdin.close()
-    proc.wait()
-    metrics.final_report()
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await nc.close()
+        proc.stdin.close()
+        proc.wait()
+        metrics.final_report()
 
 
 if __name__ == "__main__":

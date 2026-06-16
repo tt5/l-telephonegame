@@ -119,7 +119,7 @@ async def main():
         image_28x28 = np.zeros((28, 28), dtype=np.float32)
         candidate = image_28x28
         retry_count = 0
-        for retry_count in range(500):
+        for retry_count in range(50):
             noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
             label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
             label_oh[0, gen_label] = 1.0

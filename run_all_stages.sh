@@ -86,19 +86,19 @@ need_data() {
 if [ "$MODE" != "metrics" ]; then
     echo "═══ Stage 1 ═══"
 
-    #if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
-    #    cd "$TF_DIR"
-    #    "$CONDA_PYTHON" mnist.py 2>&1 | tail -5
-    #    "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
-    #    cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
-    #fi
+    if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
+        cd "$TF_DIR"
+        "$CONDA_PYTHON" mnist.py --classes 0 1 2 3 4 5 6 7 8 9 2>&1 | tail -5
+        "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
+        cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
+    fi
 
-    #if need_step "cvae1" "$SCRIPT_DIR/cvae_generator.onnx"; then
-    #    cd "$TF_DIR"
-    #    "$CONDA_PYTHON" train_cvae.py 2>&1 | tail -5
-    #    "$CONDA_PYTHON" -m tf2onnx.convert --keras cvae_generator.h5 --output cvae_generator.onnx
-    #    cp "$TF_DIR/cvae_generator.onnx" "$SCRIPT_DIR/cvae_generator.onnx"
-    #fi
+    if need_step "cvae1" "$SCRIPT_DIR/cvae_generator.onnx"; then
+        cd "$TF_DIR"
+        "$CONDA_PYTHON" train_cvae.py  --classes 0 1 2 3 4 5 6 7 8 9 2>&1 | tail -5
+        "$CONDA_PYTHON" -m tf2onnx.convert --keras cvae_generator.h5 --output cvae_generator.onnx
+        cp "$TF_DIR/cvae_generator.onnx" "$SCRIPT_DIR/cvae_generator.onnx"
+    fi
 
     # ─── Generate data/pbm/ ─────────────────────────────────────────
     if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 10000; then
@@ -246,7 +246,7 @@ done
 echo ""
 echo "  Data:"
 for d in pbm pbm2; do
-    count=$(ls "$SCRIPT_DIR/data/$d/"*.pbm 2>/dev/null | wc -l)
+    count=$(find "$SCRIPT_DIR/data/$d/" -maxdepth 1 -name "*.pbm" -type f 2>/dev/null | wc -l)
     echo "    data/$d/: $count images"
 done
 echo ""

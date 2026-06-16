@@ -106,6 +106,7 @@ def main():
     low_saved = 0
     generated = 0
     red_flags = 0
+    save_counter = 0
     start_time = time.time()
 
     print(f"Generating images (batch_size={BATCH_SIZE})...")
@@ -218,7 +219,8 @@ def main():
 
                 if save:
                     conf_int = min(65535, max(0, int(final_confidence * 10000)))
-                    filename = f"{final_predicted}_{conf_int:04d}_{int(time.time()*1000000):016d}.pbm"
+                    filename = f"{final_predicted}_{conf_int:04d}_{save_counter:06d}.pbm"
+                    save_counter += 1
                     (out_dir / filename).write_bytes(pbm_bytes)
 
                 # Progress report
@@ -236,12 +238,13 @@ def main():
                           f"{'[SAVED]' if save else '[skipped]'}")
 
     elapsed = time.time() - start_time
-    final_high, final_low = count_by_confidence(out_dir)
+    total_high = existing_high + high_saved
+    total_low = existing_low + low_saved
     print(f"\nDone! Generated {generated} images in {elapsed:.1f}s ({generated/elapsed:.0f} img/s)")
     print(f"Red flags (wrong prediction after down/up-scale): {red_flags}")
     print(f"Saved this run: {high_saved} high-conf, {low_saved} low-conf")
-    print(f"Total in {out_dir}: {final_high + final_low} "
-          f"(high: {final_high}, low: {final_low})")
+    print(f"Total in {out_dir}: {total_high + total_low} "
+          f"(high: {total_high}, low: {total_low})")
 
 if __name__ == "__main__":
     main()

@@ -212,7 +212,7 @@ async def main():
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-video_size", "84x56",
-            "-r", "30",
+            "-r", "2",
             "-i", "-",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",

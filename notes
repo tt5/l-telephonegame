@@ -29,3 +29,8 @@ Done! Generated 113180 images in 450.0s (251 img/s)
 Red flags (wrong prediction after down/up-scale): 2039
 Saved this run: 9090 high-conf, 910 low-conf
 Total in data/pbm: 10000 (high: 9090, low: 910)
+
+Done! Generated 121700 images in 345.9s (352 img/s)
+Red flags (wrong prediction after down/up-scale): 1946
+Saved this run: 9090 high-conf, 910 low-conf
+Total in data/pbm: 10000 (high: 9090, low: 910)

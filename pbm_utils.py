@@ -155,16 +155,26 @@ def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -
     back to the corresponding block in the source, then thresholds at 0.5.
     """
     src_h, src_w = image_28x28.shape
-    grid = np.zeros((height, width), dtype=np.float32)
     base_h, extra_h = divmod(src_h, height)
     base_w, extra_w = divmod(src_w, width)
-    for r in range(height):
-        for c in range(width):
-            r_start = r * base_h + min(r, extra_h)
-            c_start = c * base_w + min(c, extra_w)
-            r_end = min(r_start + base_h + (1 if r < extra_h else 0), src_h)
-            c_end = min(c_start + base_w + (1 if c < extra_w else 0), src_w)
-            grid[r, c] = image_28x28[r_start:r_end, c_start:c_end].mean()
+
+    # Compute block boundaries for rows and columns
+    row_starts = np.arange(height) * base_h + np.minimum(np.arange(height), extra_h)
+    row_ends = np.minimum(row_starts + base_h + (np.arange(height) < extra_h).astype(int), src_h)
+    col_starts = np.arange(width) * base_w + np.minimum(np.arange(width), extra_w)
+    col_ends = np.minimum(col_starts + base_w + (np.arange(width) < extra_w).astype(int), src_w)
+
+    # Vectorized block mean using integral image (summed area table)
+    # This avoids the Python double loop entirely
+    integral = np.pad(image_28x28.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)), constant_values=0)
+    # For each (r,c): sum = integral[r_end, c_end] - integral[r_start, c_end] - integral[r_end, c_start] + integral[r_start, c_start]
+    r0 = row_starts[:, None]
+    r1 = row_ends[:, None]
+    c0 = col_starts[None, :]
+    c1 = col_ends[None, :]
+    block_sums = integral[r1, c1] - integral[r0, c1] - integral[r1, c0] + integral[r0, c0]
+    block_sizes = (r1 - r0) * (c1 - c0)
+    grid = block_sums / block_sizes
 
     binary = (grid <= 0.5).astype(np.uint8)  # invert: P4 bit=0 is white (foreground), bit=1 is black (background)
 

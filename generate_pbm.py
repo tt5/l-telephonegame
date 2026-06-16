@@ -34,7 +34,8 @@ NUM_CLASSES = 10  # digits 0-9 (stage 1, no low_conf)
 QUALITY_THRESHOLD = 0.7
 CONF_THRESHOLD = 0.6
 TARGET_RATIO_LOW = 1   # 1/11 low-conf
-TARGET_RATIO_HIGH = 10  # 10/11 high-conf
+TARGET_RATIO_HIGH = 10  # 10/11 high_conf
+BATCH_SIZE = 64  # generate+classify this many at once
 
 
 def count_by_confidence(out_dir: Path):
@@ -107,60 +108,98 @@ def main():
     red_flags = 0
     start_time = time.time()
 
-    print(f"Generating images...")
+    print(f"Generating images (batch_size={BATCH_SIZE})...")
     while high_saved < high_need or low_saved < low_need:
-        digit = generated % NUM_CLASSES
+        # --- Batched generate + quality check ---
+        # Generate BATCH_SIZE images from cvae1, classify all at once,
+        # keep those where predicted==digit and confidence >= QUALITY_THRESHOLD
+        still_need = (high_need - high_saved) + (low_need - low_saved)
+        batch_target = min(BATCH_SIZE, still_need * 4)  # oversample to account for rejections
+        batch_target = max(batch_target, 1)
 
-        # --- Step 1: Generate + quality check (infinite retry) ---
-        # Same as publisher.py stage 1: generate from cvae1, classify with mnist1,
-        # retry until predicted==digit and confidence >= QUALITY_THRESHOLD
-        predicted = digit
-        confidence = 0.0
-        image_28x28 = np.zeros((28, 28), dtype=np.float32)
-        attempts = 0
-        while True:
-            noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
-            label_oh = np.zeros((1, NUM_CLASSES), dtype=np.float32)
-            label_oh[0, digit] = 1.0
+        noise = np.random.normal(size=(batch_target, LATENT_DIM)).astype(np.float32)
+        digits = np.array([(generated + i) % NUM_CLASSES for i in range(batch_target)])
+        label_oh = np.zeros((batch_target, NUM_CLASSES), dtype=np.float32)
+        label_oh[np.arange(batch_target), digits] = 1.0
 
-            gen_inputs = {}
-            for inp in gen_session.get_inputs():
-                if "latent" in inp.name.lower():
-                    gen_inputs[inp.name] = noise
-                elif "label" in inp.name.lower():
-                    gen_inputs[inp.name] = label_oh
+        gen_inputs = {}
+        for inp in gen_session.get_inputs():
+            if "latent" in inp.name.lower():
+                gen_inputs[inp.name] = noise
+            elif "label" in inp.name.lower():
+                gen_inputs[inp.name] = label_oh
 
-            gen_outputs = gen_session.run([gen_output_name], gen_inputs)
-            image_28x28 = gen_outputs[0][0, :, :, 0]
-            attempts += 1
+        gen_outputs = gen_session.run([gen_output_name], gen_inputs)[0]  # (B, 28, 28, 1)
+        images = gen_outputs[:, :, :, 0]  # (B, 28, 28)
 
-            # Classify with mnist1
-            predicted, confidence = classify_mnist1(cls_session, cls_input_name, cls_output_name, image_28x28)
+        # Classify entire batch at once
+        cls_input = images.reshape(batch_target, 28, 28).astype(np.float32)
+        cls_logits = cls_session.run([cls_output_name], {cls_input_name: cls_input})[0]  # (B, 10)
+        exp_probs = np.exp(cls_logits - cls_logits.max(axis=1, keepdims=True))
+        probs = exp_probs / exp_probs.sum(axis=1, keepdims=True)
+        preds = np.argmax(probs, axis=1)
+        confs = probs[np.arange(batch_target), preds]
 
-            # Accept if predicted matches digit and confidence >= quality threshold
-            if predicted == digit and confidence >= QUALITY_THRESHOLD:
-                break
-            # Otherwise retry infinitely
+        # Filter: keep only images where predicted==digit and confidence >= threshold
+        mask = (preds == digits) & (confs >= QUALITY_THRESHOLD)
+        good_images = images[mask]       # (G, 28, 28)
+        good_preds = preds[mask]
+        good_confs = confs[mask]
+        good_digits = digits[mask]
+        generated += batch_target
 
-        # --- Step 2: Downscale 28x28 -> 22x22 PBM ---
-        pbm_bytes = downscale_to_pbm(image_28x28, width=22, height=22)
+        # --- Process each accepted image: downscale, upscale, re-classify, save ---
+        for i in range(len(good_images)):
+            image_28x28 = good_images[i]
+            digit = int(good_digits[i])
 
-        # --- Step 3: Upscale 22x22 -> 28x28 and classify again ---
-        # pbm_to_input decodes raw pixel data, upscales to 28x28, and normalizes
-        pbm_pixel_data = pbm_bytes[9:]  # strip P4\n22 22\n header (9 bytes)
-        input_tensor = pbm_to_input2(pbm_pixel_data, width=22, height=22)
-        cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
-        exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
-        probs = exp_probs / exp_probs.sum()
-        final_predicted = int(np.argmax(probs))
-        final_confidence = float(probs[final_predicted])
+            # Downscale 28x28 -> 22x22 PBM
+            pbm_bytes = downscale_to_pbm(image_28x28, width=22, height=22)
 
-        # --- Step 4: Red flag check ---
-        if final_predicted != digit:
-            red_flags += 1
-            generated += 1
-            # Log red flag but don't save
-            if generated % 1000 == 0:
+            # Upscale 22x22 -> 28x28 and classify again
+            pbm_pixel_data = pbm_bytes[9:]  # strip P4\n22 22\n header (9 bytes)
+            input_tensor = pbm_to_input2(pbm_pixel_data, width=22, height=22)
+            cls_out = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
+            exp_p = np.exp(cls_out - np.max(cls_out))
+            final_probs = exp_p / exp_p.sum()
+            final_predicted = int(np.argmax(final_probs))
+            final_confidence = float(final_probs[final_predicted])
+
+            # Red flag check
+            if final_predicted != digit:
+                red_flags += 1
+                if generated % 1000 < batch_target:
+                    elapsed = time.time() - start_time
+                    rate = generated / elapsed
+                    total_saved = high_saved + low_saved
+                    total_need = high_need + low_need
+                    print(f"  Generated {generated} ({rate:.0f} img/s) | "
+                          f"Saved {total_saved}/{total_need} "
+                          f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
+                          f"| red_flags={red_flags} "
+                          f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
+                          f"| [RED FLAG]")
+                continue
+
+            # Save based on target ratio
+            is_high = final_confidence >= CONF_THRESHOLD
+
+            if is_high and high_saved < high_need:
+                save = True
+                high_saved += 1
+            elif not is_high and low_saved < low_need:
+                save = True
+                low_saved += 1
+            else:
+                save = False
+
+            if save:
+                conf_int = min(65535, max(0, int(final_confidence * 10000)))
+                filename = f"{final_predicted}_{conf_int:04d}_{int(time.time()*1000000):016d}.pbm"
+                (out_dir / filename).write_bytes(pbm_bytes)
+
+            # Progress report
+            if (high_saved + low_saved) % 500 < 1 and (high_saved + low_saved) > 0:
                 elapsed = time.time() - start_time
                 rate = generated / elapsed
                 total_saved = high_saved + low_saved
@@ -170,41 +209,8 @@ def main():
                       f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
                       f"| red_flags={red_flags} "
                       f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
-                      f"| [RED FLAG]")
-            continue
-
-        # --- Step 5: Save based on target ratio ---
-        is_high = final_confidence >= CONF_THRESHOLD
-
-        if is_high and high_saved < high_need:
-            save = True
-            high_saved += 1
-        elif not is_high and low_saved < low_need:
-            save = True
-            low_saved += 1
-        else:
-            save = False
-
-        if save:
-            conf_int = min(65535, max(0, int(final_confidence * 10000)))
-            filename = f"{final_predicted}_{conf_int:04d}_{int(time.time()*1000000):016d}.pbm"
-            (out_dir / filename).write_bytes(pbm_bytes)
-
-        generated += 1
-
-        # Progress report every 1000 generated
-        if generated % 1000 == 0:
-            elapsed = time.time() - start_time
-            rate = generated / elapsed
-            total_saved = high_saved + low_saved
-            total_need = high_need + low_need
-            print(f"  Generated {generated} ({rate:.0f} img/s) | "
-                  f"Saved {total_saved}/{total_need} "
-                  f"(high: {high_saved}/{high_need}, low: {low_saved}/{low_need}) "
-                  f"| red_flags={red_flags} "
-                  f"| last: digit={digit} pred={final_predicted} conf={final_confidence:.3f} "
-                  f"gen_attempts={attempts} "
-                  f"{'[SAVED]' if save else '[skipped]'}")
+                      f"| batch_yield={len(good_images)}/{batch_target} "
+                      f"{'[SAVED]' if save else '[skipped]'}")
 
     elapsed = time.time() - start_time
     final_high, final_low = count_by_confidence(out_dir)

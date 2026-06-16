@@ -22,3 +22,10 @@ ffmpeg -i out.mp4 -vf "scale=1920:1080:flags=neighbor" -c:v libx264 -pix_fmt yuv
 uv run pbm_stream_to_ffmpeg.py out.mp4
 
 uv run python3 generate_pbm.py --count 100000
+
+---
+
+Done! Generated 113180 images in 450.0s (251 img/s)
+Red flags (wrong prediction after down/up-scale): 2039
+Saved this run: 9090 high-conf, 910 low-conf
+Total in data/pbm: 10000 (high: 9090, low: 910)

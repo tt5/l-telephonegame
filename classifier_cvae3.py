@@ -14,9 +14,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import onnxruntime as ort
 
-from pbm_utils import PBM_HEADER, downscale_to_pbm, parse_message, pbm_to_input2
-from pbm_stream_to_ffmpeg3 import save_pbm
+from pbm_utils import downscale_to_pbm, parse_message, pbm_to_input2
 
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT_IN = "one"
@@ -24,10 +24,13 @@ SUBJECT_OUT = "two"
 CLASSIFIER_PATH = Path(__file__).parent / "mnist3_model.onnx"
 GENERATOR_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 LATENT_DIM = 16
-NUM_CLASSES = 12  # digits 0-9 + low_conf + low_conf_2
 
-# Parse --max-images from sys.argv at module level (before ONNX runtime init)
-SAVED_COUNT = 0
+# Derive num_classes from model output shape
+_cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))
+NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]  # e.g. 12 for stage 3
+del _cls_tmp
+
+# Parse --max-images from sys.argv at module level
 _MAX_IMAGES = None
 _i = 1
 while _i < len(sys.argv):
@@ -36,10 +39,6 @@ while _i < len(sys.argv):
         sys.argv = sys.argv[:_i] + sys.argv[_i + 2:]
     else:
         _i += 1
-
-LATENT_DIM = 16
-
-PBM_TOTAL = len(PBM_HEADER) + 8  # header + 8 data bytes
 
 
 def build_message(pbm: bytes, orig_data: bytes, cls_in_img: bytes, cls_out_img: bytes,
@@ -115,10 +114,6 @@ async def main():
         confidence = cls_probs[predicted]
 
         gen_label = predicted  # can be 0-11
-
-        # Save PBM if prediction matches publisher digit
-        if predicted == publisher_digit:
-            save_pbm(pixel_data, width, height, predicted, confidence)
 
         # Generate new image from CVAE (retry until confident)
         image_28x28 = np.zeros((28, 28), dtype=np.float32)

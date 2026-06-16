@@ -26,18 +26,5 @@ uv run python3 generate_pbm.py --count 100000
 ---
 
 Done! Generated 113180 images in 450.0s (251 img/s)
-Red flags (wrong prediction after down/up-scale): 2039
-Saved this run: 9090 high-conf, 910 low-conf
-Total in data/pbm: 10000 (high: 9090, low: 910)
 
-Done! Generated 121700 images in 345.9s (352 img/s)
-Red flags (wrong prediction after down/up-scale): 1946
-Saved this run: 9090 high-conf, 910 low-conf
-Total in data/pbm: 10000 (high: 9090, low: 910)
-
-Done! Generated 119496 images in 107.6s (1111 img/s)
-Red flags (wrong prediction after down/up-scale): 1933
-Saved this run: 9090 high-conf, 910 low-conf
-Total in data/pbm: 10000 (high: 9090, low: 910)
-
-Done! Generated 123500 images in 108.1s (1142 img/s)
+Done! Generated 126840 images in 31.8s (3990 img/s)

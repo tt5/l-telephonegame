@@ -152,23 +152,23 @@ def main():
         # Downscale: (G, 28, 28) float32 -> (G, 22, 22) uint8 binary
         binary_grids = downscale_batch(good_images, width=22, height=22)  # (G, 22, 22)
 
-        # Encode binary grids back to PBM bytes for saving
-        # Each row of 22 pixels = 3 bytes; header = 9 bytes
+        # Encode binary grids back to PBM bytes for saving (vectorized with np.packbits)
+        # Each row of 22 pixels packs into 3 bytes (MSB-first, left-aligned)
+        # binary_grids: (G, 22, 22) uint8 -> packbits -> (G, 22, 3) uint8
+        # Then strip 9-byte headers for pbm_to_input2_batch
+        packed = np.packbits(binary_grids, axis=2, bitorder='big')  # (G, 22, 3)
+        pixel_data_bytes = packed.tobytes()  # raw bytes, consecutive rows
+        rows_bytes = 22 * 3  # 66 bytes per image
         accepted_pbm = []
+        pixel_data_list = []
+        header = b"P4\n22 22\n"
         for i in range(len(good_images)):
-            grid = binary_grids[i]  # (22, 22) uint8
-            header = b"P4\n22 22\n"
-            buf = bytearray(header)
-            for row in grid:
-                val = 0
-                for j in range(22):
-                    val = (val << 1) | (int(row[j]) & 1)
-                val <<= (3 * 8 - 22)  # left-align in 24 bits
-                buf.extend(val.to_bytes(3, "big"))
-            accepted_pbm.append(bytes(buf))
+            offset = i * rows_bytes
+            pbm = header + pixel_data_bytes[offset:offset + rows_bytes]
+            accepted_pbm.append(pbm)
+            pixel_data_list.append(pbm[9:])
 
         # Batch decode + upscale PBM pixel data for second classify
-        pixel_data_list = [pbm[9:] for pbm in accepted_pbm]  # strip 9-byte headers
         accepted_input_tensors = pbm_to_input2_batch(pixel_data_list, width=22, height=22)  # (G, 28, 28)
         accepted_digits = good_digits
 

@@ -14,14 +14,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TF_DIR="$SCRIPT_DIR/../python/tf"
 CONDA_PYTHON="/home/n/miniconda3/envs/tf/bin/python"
-MODE="${1:---skip}"
-
 # ─── Parse mode ─────────────────────────────────────────────────────
+MODE="${1:---skip}"
+# Support both "--mode train" and "--train" syntax
+if [ "$MODE" = "--mode" ] || [ "$MODE" = "-m" ]; then
+    MODE="${2:---skip}"
+fi
 case "$MODE" in
-    --train)   MODE="train" ;;
-    --skip)    MODE="skip" ;;
-    --metrics) MODE="metrics" ;;
-    *)         MODE="skip" ;;
+    train|--train)   MODE="train" ;;
+    skip|--skip)     MODE="skip" ;;
+    metrics|--metrics) MODE="metrics" ;;
+    *)               MODE="skip" ;;
 esac
 
 echo "=== Telephone Game ==="
@@ -67,7 +70,8 @@ need_data() {
         echo "  [SKIP] $desc (metrics mode)"
         return 1
     fi
-    local count=$(ls "$dir"/*.pbm 2>/dev/null | wc -l)
+    # Use find to count (handles large directories)
+    local count=$(find "$dir" -maxdepth 1 -name "*.pbm" -type f 2>/dev/null | wc -l)
     if [ "$count" -ge "$min" ]; then
         echo "  [EXISTS] $desc ($count files)"
         return 1
@@ -111,11 +115,6 @@ fi
 if [ "$MODE" != "metrics" ]; then
     echo "═══ Stage 2 ═══"
 
-    # Point training scripts to telephonegame data
-    cd "$TF_DIR"
-    sed -i 's|PBM_DIR = Path(__file__).parent / "data/pbm"|PBM_DIR = Path(__file__).parent / "../telephonegame/data/pbm"|' mnist2.py 2>/dev/null || true
-    sed -i 's|PBM_DIR = Path(__file__).parent / "data/pbm"|PBM_DIR = Path(__file__).parent / "../telephonegame/data/pbm"|' train_cvae2.py 2>/dev/null || true
-
     if need_step "mnist2" "$SCRIPT_DIR/mnist2_model.onnx"; then
         cd "$TF_DIR"
         "$CONDA_PYTHON" mnist2.py 2>&1 | tail -5
@@ -144,10 +143,6 @@ fi
 # ═══════════════════════════════════════════════════════════════════
 if [ "$MODE" != "metrics" ]; then
     echo "═══ Stage 3 ═══"
-
-    cd "$TF_DIR"
-    sed -i 's|PBM_DIR = Path(__file__).parent / "data/pbm2"|PBM_DIR = Path(__file__).parent / "../telephonegame/data/pbm2"|' mnist3.py 2>/dev/null || true
-    sed -i 's|PBM_DIR = Path(__file__).parent / "data/pbm2"|PBM_DIR = Path(__file__).parent / "../telephonegame/data/pbm2"|' train_cvae3.py 2>/dev/null || true
 
     if need_step "mnist3" "$SCRIPT_DIR/mnist3_model.onnx"; then
         cd "$TF_DIR"

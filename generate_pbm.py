@@ -27,7 +27,7 @@ import numpy as np
 import onnxruntime as ort
 from pathlib import Path
 
-from pbm_utils import downscale_to_pbm, pbm_to_input2
+from pbm_utils import downscale_to_pbm, pbm_to_input2, downscale_batch, pbm_to_input2_batch
 
 LATENT_DIM = 16
 NUM_CLASSES = 10  # digits 0-9 (stage 1, no low_conf)
@@ -148,28 +148,34 @@ def main():
         good_digits = digits[mask]
         generated += batch_target
 
-        # --- Process each accepted image: downscale, upscale, batch re-classify, save ---
-        # First pass: downscale + upscale all accepted images
+        # --- Batch downscale + upscale all accepted images at once ---
+        # Downscale: (G, 28, 28) float32 -> (G, 22, 22) uint8 binary
+        binary_grids = downscale_batch(good_images, width=22, height=22)  # (G, 22, 22)
+
+        # Encode binary grids back to PBM bytes for saving
+        # Each row of 22 pixels = 3 bytes; header = 9 bytes
         accepted_pbm = []
-        accepted_digits = []
-        accepted_input_tensors = []
         for i in range(len(good_images)):
-            image_28x28 = good_images[i]
-            digit = int(good_digits[i])
-            pbm_bytes = downscale_to_pbm(image_28x28, width=22, height=22)
-            pbm_pixel_data = pbm_bytes[9:]  # strip P4\n22 22\n header (9 bytes)
-            input_tensor = pbm_to_input2(pbm_pixel_data, width=22, height=22)
-            accepted_pbm.append(pbm_bytes)
-            accepted_digits.append(digit)
-            accepted_input_tensors.append(input_tensor)
+            grid = binary_grids[i]  # (22, 22) uint8
+            header = b"P4\n22 22\n"
+            buf = bytearray(header)
+            for row in grid:
+                val = 0
+                for j in range(22):
+                    val = (val << 1) | (int(row[j]) & 1)
+                val <<= (3 * 8 - 22)  # left-align in 24 bits
+                buf.extend(val.to_bytes(3, "big"))
+            accepted_pbm.append(bytes(buf))
+
+        # Batch decode + upscale PBM pixel data for second classify
+        pixel_data_list = [pbm[9:] for pbm in accepted_pbm]  # strip 9-byte headers
+        accepted_input_tensors = pbm_to_input2_batch(pixel_data_list, width=22, height=22)  # (G, 28, 28)
+        accepted_digits = good_digits
 
         # Batch classify all upscaled images at once
-        if accepted_input_tensors:
-            batch_cls_input = np.stack(accepted_input_tensors, axis=0)  # (G, 1, 28, 28)
-            # Squeeze the extra dim from pbm_to_input2: (1, 28, 28) -> stack keeps (G, 1, 28, 28)
-            # But mnist expects (batch, 28, 28), so squeeze
-            batch_cls_input = batch_cls_input[:, 0, :, :]  # (G, 28, 28)
-            batch_cls_logits = cls_session.run([cls_output_name], {cls_input_name: batch_cls_input})[0]  # (G, 10)
+        if len(accepted_input_tensors) > 0:
+            # accepted_input_tensors is already (G, 28, 28) from pbm_to_input2_batch
+            batch_cls_logits = cls_session.run([cls_output_name], {cls_input_name: accepted_input_tensors})[0]  # (G, 10)
             batch_exp = np.exp(batch_cls_logits - batch_cls_logits.max(axis=1, keepdims=True))
             batch_probs = batch_exp / batch_exp.sum(axis=1, keepdims=True)
             batch_preds = np.argmax(batch_probs, axis=1)

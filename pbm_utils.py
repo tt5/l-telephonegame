@@ -176,3 +176,73 @@ def downscale_to_pbm(image_28x28: np.ndarray, width: int = 8, height: int = 8) -
         val <<= (bytes_per_row * 8 - width)
         buf.extend(val.to_bytes(bytes_per_row, "big"))
     return bytes(buf)
+
+
+def downscale_batch(images: np.ndarray, width: int = 22, height: int = 22) -> np.ndarray:
+    """Downscale a batch of 28x28 float32 images to binary grids.
+
+    Args:
+        images: (N, 28, 28) float32 array
+        width: target width (default 22)
+        height: target height (default 22)
+
+    Returns:
+        (N, height, width) uint8 binary array (0 or 1)
+    """
+    n = images.shape[0]
+    src_h, src_w = images.shape[1], images.shape[2]
+    base_h, extra_h = divmod(src_h, height)
+    base_w, extra_w = divmod(src_w, width)
+
+    # Compute block boundaries (same for all images in batch)
+    row_starts = np.arange(height) * base_h + np.minimum(np.arange(height), extra_h)
+    row_ends = np.minimum(row_starts + base_h + (np.arange(height) < extra_h).astype(int), src_h)
+    col_starts = np.arange(width) * base_w + np.minimum(np.arange(width), extra_w)
+    col_ends = np.minimum(col_starts + base_w + (np.arange(width) < extra_w).astype(int), src_w)
+    r0 = row_starts[:, None]
+    r1 = row_ends[:, None]
+    c0 = col_starts[None, :]
+    c1 = col_ends[None, :]
+
+    # Batched integral image: cumsum over spatial dims for each image in batch
+    # images is (N, H, W) -> pad -> cumsum axis=1 -> cumsum axis=2
+    integral = np.pad(images.cumsum(axis=1).cumsum(axis=2), ((0, 0), (1, 0), (1, 0)), constant_values=0)
+    # integral shape: (N, H+1, W+1)
+    # Block sums via advanced indexing: (N, height, width)
+    block_sums = integral[:, r1, c1] - integral[:, r0, c1] - integral[:, r1, c0] + integral[:, r0, c0]
+    block_sizes = (r1 - r0) * (c1 - c0)  # (height, width) broadcast over N
+    grid = block_sums / block_sizes  # (N, height, width)
+    return (grid <= 0.5).astype(np.uint8)
+
+
+def pbm_to_input2_batch(pixel_data_list: list[bytes], width: int = 22, height: int = 22) -> np.ndarray:
+    """Convert a batch of P4 PBM pixel data to (N, 28, 28) float32.
+
+    Decodes all PBM data, then upscales all at once using vectorized operations.
+    """
+    n = len(pixel_data_list)
+    bytes_per_row = (width + 7) // 8
+    expected = bytes_per_row * height
+
+    # Stack all raw bytes into a single array and unpack bits in one call
+    raw = np.frombuffer(b"".join(pixel_data_list), dtype=np.uint8)
+    # Each image has expected bytes; reshape to (N, expected)
+    raw = raw.reshape(n, expected)
+    # Unpack bits: (N, expected) -> (N, expected*8)
+    bits = np.unpackbits(raw, axis=1)  # (N, expected*8)
+    # Reshape to (N, height, bytes_per_row*8) then slice to width
+    grids = 1.0 - bits.reshape(n, height, bytes_per_row * 8)[:, :, :width].astype(np.float32)
+
+    # Batched upscale: same repeat counts for all images
+    dst_h, dst_w = 28, 28
+    base_h, extra_h = divmod(dst_h, height)
+    base_w, extra_w = divmod(dst_w, width)
+    row_repeats = np.full(height, base_h, dtype=int)
+    row_repeats[:extra_h] += 1
+    col_repeats = np.full(width, base_w, dtype=int)
+    col_repeats[:extra_w] += 1
+
+    # Apply repeat: (N, H, W) -> (N, dst_h, W) -> (N, dst_h, dst_w)
+    upscaled = grids.repeat(row_repeats, axis=1).repeat(col_repeats, axis=2)
+    binary = (upscaled > 0.5).astype(np.float32)
+    return binary

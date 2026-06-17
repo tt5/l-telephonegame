@@ -31,7 +31,8 @@ LATENT_DIM = 16
 # Derive num_classes from model output shape
 import onnxruntime as ort
 _cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))
-NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]  # e.g. 12 for stage 3
+NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]
+print("listener classifier num_classes: ", NUM_CLASSES)
 del _cls_tmp
 
 # Parse --output from sys.argv at module level (video output path)
@@ -169,7 +170,16 @@ class Metrics:
         # Per-class distribution
         print(f"  Predictions:", file=sys.stderr)
         for c in range(NUM_CLASSES):
-            name = f"d{c}" if c < 10 else ("lc" if c == 10 else "lc2")
+            if c < 10:
+                name = f"d{c}"
+            elif c == 10:
+                name = "X"
+            elif c == 11:
+                name = "lc"
+            elif c == 12:
+                name = "lc2"
+            else:
+                name = f"c{c}"
             pred_pct = 100 * self.predictions[c] / max(1, self.frame_count)
             pub_pct = 100 * self.publisher_digits[c] / max(1, self.frame_count)
             print(f"    {name}: pred={self.predictions[c]} ({pred_pct:.1f}%) pub={self.publisher_digits[c]} ({pub_pct:.1f}%)", file=sys.stderr)

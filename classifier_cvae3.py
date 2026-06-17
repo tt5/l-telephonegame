@@ -27,7 +27,8 @@ LATENT_DIM = 16
 
 # Derive num_classes from model output shape
 _cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))
-NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]  # e.g. 12 for stage 3
+NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]
+print("classifier num_classes: ", NUM_CLASSES)
 del _cls_tmp
 
 # Parse --max-images from sys.argv at module level

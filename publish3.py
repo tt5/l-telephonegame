@@ -25,7 +25,8 @@ CLASSIFIER_PATH = Path(__file__).parent / "mnist3_model.onnx"
 
 # Derive num_classes from model output shape (no hardcoded NUM_CLASSES)
 _cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))
-NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]  # e.g. 12 for stage 3
+NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]
+print("publisher num_classes: ", NUM_CLASSES)
 del _cls_tmp
 
 NATS_URL = "nats://127.0.0.1:4222"

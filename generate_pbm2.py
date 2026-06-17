@@ -4,7 +4,7 @@
 Generate 22x22 binary PBM images for training stage 3.
 Replicates the stage-2 pipeline logic without NATS/realtime display.
 
-Stage 2: cvae2 + mnist2, 11 classes (digits 0-9 + low_conf)
+Stage 2: cvae2 + mnist2
 Output: data/pbm2/
 
 Usage:
@@ -26,13 +26,19 @@ from gen_pbm_common import (
     generate_batch, encode_pbm_batch, progress_report,
 )
 
-# ─── Stage 2 config ────────────────────────────────────────────────
+# ─── Stage config ──────────────────────────────────────────────────
 STAGE = 2
-NUM_CLASSES = 11  # digits 0-9 + low_conf
 GEN_MODEL = "cvae2_generator.onnx"
 CLS_MODEL = "mnist2_model.onnx"
 DEFAULT_OUT_DIR = "data/pbm2"
 BATCH_SIZE = 64
+
+# Derive num_classes from generator model label input shape
+# The generator generates classes 0..N-1, low_conf is assigned by classifier later
+_gen_tmp = ort.InferenceSession(str(Path(__file__).parent / GEN_MODEL))
+NUM_CLASSES = _gen_tmp.get_inputs()[1].shape[1]  # label_input shape
+del _gen_tmp
+print(f"Stage {STAGE}: generating {NUM_CLASSES} classes (generator label_input shape)")
 
 
 def main():

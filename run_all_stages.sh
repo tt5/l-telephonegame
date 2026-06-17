@@ -86,19 +86,19 @@ need_data() {
 if [ "$MODE" != "metrics" ]; then
     echo "═══ Stage 1 ═══"
 
-    #if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
-    #    cd "$TF_DIR"
-    #    "$CONDA_PYTHON" mnist.py 2>&1 | tail -5
-    #    "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
-    #    cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
-    #fi
+    if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
+        cd "$TF_DIR"
+        "$CONDA_PYTHON" mnist.py 2>&1 | tail -5
+        "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
+        cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
+    fi
 
-    #if need_step "cvae1" "$SCRIPT_DIR/cvae_generator.onnx"; then
-    #    cd "$TF_DIR"
-    #    "$CONDA_PYTHON" train_cvae.py 2>&1 | tail -5
-    #    "$CONDA_PYTHON" -m tf2onnx.convert --keras cvae_generator.h5 --output cvae_generator.onnx
-    #    cp "$TF_DIR/cvae_generator.onnx" "$SCRIPT_DIR/cvae_generator.onnx"
-    #fi
+    if need_step "cvae1" "$SCRIPT_DIR/cvae_generator.onnx"; then
+        cd "$TF_DIR"
+        "$CONDA_PYTHON" train_cvae.py 2>&1 | tail -5
+        "$CONDA_PYTHON" -m tf2onnx.convert --keras cvae_generator.h5 --output cvae_generator.onnx
+        cp "$TF_DIR/cvae_generator.onnx" "$SCRIPT_DIR/cvae_generator.onnx"
+    fi
 
     # ─── Generate data/pbm/ ─────────────────────────────────────────
     if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 11000; then

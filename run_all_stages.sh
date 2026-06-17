@@ -88,22 +88,22 @@ if [ "$MODE" != "metrics" ]; then
 
     if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" mnist.py --classes 0 1 2 3 4 5 6 7 8 9 2>&1 | tail -5
+        "$CONDA_PYTHON" mnist.py 2>&1 | tail -5
         "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
         cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
     fi
 
     if need_step "cvae1" "$SCRIPT_DIR/cvae_generator.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" train_cvae.py  --classes 0 1 2 3 4 5 6 7 8 9 2>&1 | tail -5
+        "$CONDA_PYTHON" train_cvae.py 2>&1 | tail -5
         "$CONDA_PYTHON" -m tf2onnx.convert --keras cvae_generator.h5 --output cvae_generator.onnx
         cp "$TF_DIR/cvae_generator.onnx" "$SCRIPT_DIR/cvae_generator.onnx"
     fi
 
     # ─── Generate data/pbm/ ─────────────────────────────────────────
-    if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 10000; then
+    if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 11000; then
         cd "$SCRIPT_DIR"
-        uv run generate_pbm.py --count 10000 --output-dir data/pbm
+        uv run generate_pbm.py --count 11000 --output-dir data/pbm
     fi
 
     echo ""
@@ -130,9 +130,9 @@ if [ "$MODE" != "metrics" ]; then
     fi
 
     # ─── Generate data/pbm2/ ─────────────────────────────────────────
-    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 10000; then
+    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 11000; then
         cd "$SCRIPT_DIR"
-        uv run generate_pbm2.py --count 10000 --output-dir data/pbm2
+        uv run generate_pbm2.py --count 11000 --output-dir data/pbm2
     fi
 
     echo ""

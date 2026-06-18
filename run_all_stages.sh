@@ -101,9 +101,9 @@ if [ "$MODE" != "metrics" ]; then
     fi
 
     # ─── Generate data/pbm/ ─────────────────────────────────────────
-    if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 11000; then
+    if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 20000; then
         cd "$SCRIPT_DIR"
-        uv run generate_pbm.py --count 11000 --output-dir data/pbm
+        uv run generate_pbm.py --count 20000 --output-dir data/pbm
     fi
 
     echo ""
@@ -129,9 +129,9 @@ if [ "$MODE" != "metrics" ]; then
     fi
 
     # ─── Generate data/pbm2/ ─────────────────────────────────────────
-    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 11000; then
+    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 20000; then
         cd "$SCRIPT_DIR"
-        uv run generate_pbm2.py --count 11000 --output-dir data/pbm2
+        uv run generate_pbm2.py --count 20000 --output-dir data/pbm2
     fi
 
     echo ""

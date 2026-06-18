@@ -81,33 +81,81 @@ def classify_batch(cls_session, cls_input_name, cls_output_name, images):
     return preds, confs
 
 
-def generate_batch(gen_session, gen_output_name, cls_session, cls_input_name, cls_output_name,
-                   num_classes, quality_threshold, batch_size):
-    """Generate a batch of images, classify, return those passing quality check.
+def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name, cls_output_name,
+                      num_classes, quality_threshold, images_per_class):
+    """Generate balanced images — exactly images_per_class per class.
+
+    For each class, generates images until enough pass quality check.
+    Uses batching for efficiency, then retries per-class for failures.
 
     Returns:
-        good_images: (G, 28, 28) float32 array of accepted images
-        good_digits: (G,) int array of target digits
+        good_images: (N, 28, 28) float32 array where N = num_classes * images_per_class
+        good_digits: (N,) int array of target digits
     """
-    noise = np.random.normal(size=(batch_size, LATENT_DIM)).astype(np.float32)
-    digits = np.arange(batch_size) % num_classes
-    label_oh = np.zeros((batch_size, num_classes), dtype=np.float32)
-    label_oh[np.arange(batch_size), digits] = 1.0
+    all_images = [[] for _ in range(num_classes)]
+    all_digits = [[] for _ in range(num_classes)]
 
-    gen_inputs = {}
-    for inp in gen_session.get_inputs():
-        if "latent" in inp.name.lower():
-            gen_inputs[inp.name] = noise
-        elif "label" in inp.name.lower():
-            gen_inputs[inp.name] = label_oh
+    batch_size = num_classes * 10
 
-    gen_outputs = gen_session.run([gen_output_name], gen_inputs)[0]  # (B, 28, 28, 1)
-    images = gen_outputs[:, :, :, 0]  # (B, 28, 28)
+    while min(len(imgs) for imgs in all_images) < images_per_class:
+        # Find classes that still need more images
+        needed = [(c, images_per_class - len(all_images[c])) for c in range(num_classes)]
+        short_classes = [c for c, n in needed if n > 0]
 
-    preds, confs = classify_batch(cls_session, cls_input_name, cls_output_name, images)
+        if not short_classes:
+            break
 
-    mask = (preds == digits) & (confs >= quality_threshold)
-    return images[mask], digits[mask]
+        # Generate a batch cycling through all classes
+        noise = np.random.normal(size=(batch_size, LATENT_DIM)).astype(np.float32)
+        digits = np.arange(batch_size) % num_classes
+        label_oh = np.zeros((batch_size, num_classes), dtype=np.float32)
+        label_oh[np.arange(batch_size), digits] = 1.0
+
+        gen_inputs = {}
+        for inp in gen_session.get_inputs():
+            if "latent" in inp.name.lower():
+                gen_inputs[inp.name] = noise
+            elif "label" in inp.name.lower():
+                gen_inputs[inp.name] = label_oh
+
+        gen_outputs = gen_session.run([gen_output_name], gen_inputs)[0]
+        images = gen_outputs[:, :, :, 0]
+
+        preds, confs = classify_batch(cls_session, cls_input_name, cls_output_name, images)
+
+        # Assign passing images to their class buckets
+        for i in range(batch_size):
+            c = int(digits[i])
+            if preds[i] == c and confs[i] >= quality_threshold and len(all_images[c]) < images_per_class:
+                all_images[c].append(images[i])
+                all_digits[c].append(c)
+
+        # Retry short classes individually
+        for c in short_classes:
+            while len(all_images[c]) < images_per_class:
+                noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+                label_oh = np.zeros((1, num_classes), dtype=np.float32)
+                label_oh[0, c] = 1.0
+
+                gen_inputs = {}
+                for inp in gen_session.get_inputs():
+                    if "latent" in inp.name.lower():
+                        gen_inputs[inp.name] = noise
+                    elif "label" in inp.name.lower():
+                        gen_inputs[inp.name] = label_oh
+
+                img = gen_session.run([gen_output_name], gen_inputs)[0][0, :, :, 0]
+                pred, conf = classify_image(cls_session, cls_input_name, cls_output_name, img)
+
+                if pred == c and conf >= quality_threshold:
+                    all_images[c].append(img)
+                    all_digits[c].append(c)
+                    break
+
+    # Concatenate all classes
+    good_images = np.array([img for imgs in all_images for img in imgs])
+    good_digits = np.array([d for ds in all_digits for d in ds])
+    return good_images, good_digits
 
 
 def encode_pbm_batch(binary_grids):

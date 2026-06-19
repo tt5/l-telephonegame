@@ -20,7 +20,6 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 # ─── Constants ─────────────────────────────────────────────────────
-LATENT_DIM = 16
 PBM_HEADER = b"P4\n22 22\n"
 PBM_HEADER_LEN = len(PBM_HEADER)  # 9 bytes
 PBM_DATA_BYTES = 22 * 3  # 66 bytes (22 rows × 3 bytes/row)
@@ -83,17 +82,18 @@ def classify_batch(cls_session, cls_input_name, cls_output_name, images):
 
 def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name, cls_output_name,
                       num_classes, quality_threshold, images_per_class):
-    """Generate balanced images — exactly images_per_class per class.
-
-    For each class, generates images until enough pass quality check.
-    Uses batching for efficiency, then retries per-class for failures.
-
-    Returns:
-        good_images: (N, 28, 28) float32 array where N = num_classes * images_per_class
-        good_digits: (N,) int array of target digits
-    """
+    """Generate balanced images - exactly images_per_class per class."""
     all_images = [[] for _ in range(num_classes)]
     all_digits = [[] for _ in range(num_classes)]
+
+    # Derive latent dim from generator model input
+    latent_dim = None
+    for inp in gen_session.get_inputs():
+        if "latent" in inp.name.lower():
+            latent_dim = inp.shape[1]
+            break
+    if latent_dim is None:
+        raise ValueError("Could not find latent input in generator model")
 
     batch_size = num_classes * 10
 
@@ -106,7 +106,7 @@ def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name,
             break
 
         # Generate a batch cycling through all classes
-        noise = np.random.normal(size=(batch_size, LATENT_DIM)).astype(np.float32)
+        noise = np.random.normal(size=(batch_size, latent_dim)).astype(np.float32)
         digits = np.arange(batch_size) % num_classes
         label_oh = np.zeros((batch_size, num_classes), dtype=np.float32)
         label_oh[np.arange(batch_size), digits] = 1.0
@@ -132,8 +132,11 @@ def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name,
 
         # Retry short classes individually
         for c in short_classes:
+            print(f"  [RETRY] Class {c} short ({len(all_images[c])}/{images_per_class}), retrying...")
+            retry_count = 0
             while len(all_images[c]) < images_per_class:
-                noise = np.random.normal(size=(1, LATENT_DIM)).astype(np.float32)
+                retry_count += 1
+                noise = np.random.normal(size=(1, latent_dim)).astype(np.float32)
                 label_oh = np.zeros((1, num_classes), dtype=np.float32)
                 label_oh[0, c] = 1.0
 
@@ -150,6 +153,7 @@ def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name,
                 if pred == c and conf >= quality_threshold:
                     all_images[c].append(img)
                     all_digits[c].append(c)
+                    print(f"  [RETRY] Class {c} passed after {retry_count} retries (conf={conf:.3f})")
                     break
 
     # Concatenate all classes

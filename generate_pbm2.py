@@ -20,7 +20,7 @@ from pathlib import Path
 
 from pbm_utils import downscale_to_pbm, pbm_to_input2, downscale_batch, pbm_to_input2_batch
 from gen_pbm_common import (
-    LATENT_DIM, PBM_HEADER_LEN, PBM_DATA_BYTES, PBM_TOTAL,
+    PBM_HEADER_LEN, PBM_DATA_BYTES, PBM_TOTAL,
     QUALITY_THRESHOLD, CONF_THRESHOLD,
     count_by_confidence, classify_image, classify_batch,
     generate_balanced, encode_pbm_batch, progress_report,
@@ -137,10 +137,13 @@ def main():
                         save_counter += 1
                         writer_pool.submit((out_dir / filename).write_bytes, pbm_bytes)
 
-            if (high_saved + low_saved) % 500 < 10 and (high_saved + low_saved) > 0:
-                progress_report(generated, high_saved, low_saved, high_need, low_need,
-                                red_flags, start_time, 0,
-                                prefix=f"yield={len(good_images)}")
+                        if (high_saved + low_saved) % 10000 == 0:
+                            total_need = high_need + low_need
+                            total_saved = high_saved + low_saved
+                            print(f"  Progress: {total_saved}/{total_need} saved, "
+                                  f"high: {high_saved}/{high_need}, "
+                                  f"low: {low_saved}/{low_need}, "
+                                  f"still needed: {total_need - total_saved}")
 
     elapsed = time.time() - start_time
     final_high, final_low = count_by_confidence(out_dir)

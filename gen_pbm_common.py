@@ -54,6 +54,10 @@ def classify_image(cls_session, cls_input_name, cls_output_name, image_28x28):
     """
     from pbm_utils import prepare_for_mnist2
     input_tensor = prepare_for_mnist2(image_28x28)
+    # Check if model expects 4D input (Conv2D) or 3D input (Flatten)
+    input_shape = cls_session.get_inputs()[0].shape
+    if len(input_shape) == 4:
+        input_tensor = input_tensor[..., np.newaxis]  # (1, 28, 28) -> (1, 28, 28, 1)
     cls_outputs = cls_session.run([cls_output_name], {cls_input_name: input_tensor})[0][0]
     exp_probs = np.exp(cls_outputs - np.max(cls_outputs))
     probs = exp_probs / exp_probs.sum()
@@ -72,6 +76,10 @@ def classify_batch(cls_session, cls_input_name, cls_output_name, images):
         confs: (N,) float array of confidence values
     """
     binary = (images > 0.5).astype(np.float32)
+    # Check if model expects 4D input (Conv2D) or 3D input (Flatten)
+    input_shape = cls_session.get_inputs()[0].shape
+    if len(input_shape) == 4:
+        binary = binary[..., np.newaxis]  # (N, 28, 28) -> (N, 28, 28, 1)
     cls_logits = cls_session.run([cls_output_name], {cls_input_name: binary})[0]
     exp_probs = np.exp(cls_logits - cls_logits.max(axis=1, keepdims=True))
     probs = exp_probs / exp_probs.sum(axis=1, keepdims=True)

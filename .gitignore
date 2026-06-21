@@ -1,4 +1,5 @@
 **/*.raw
+**/*.png
 **/*.mp4
 hyx
 nats-server

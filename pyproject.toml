@@ -8,5 +8,6 @@ dependencies = [
     "nats-py>=2.15.0",
     "numpy>=2.4.6",
     "onnxruntime>=1.26.0",
+    "opencv-python>=4.10.0",
     "websockets>=16.0",
 ]

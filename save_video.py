@@ -20,10 +20,10 @@ NUM_CLASSES = 12
 LATENT_DIM = 16 # depends on cvae3_generator
 GRID_SIZE = 40
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 4
-CYCLES = 10  # Number of times to cycle through all labels
+FPS = 15
+CYCLES = 20  # Number of times to cycle through all labels
 VIDEO_MODE = "random"  # "cycle" = sequential labels 0-11, "random" = random label each frame
-TARGET_BRIGHTNESS = 32  # Target average brightness (0-255)
+BRIGHTNESS_WINDOW = 2  # Number of frames to average over for dynamic brightness target
 RESOLUTION = 720  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
@@ -86,6 +86,9 @@ BATCH_SIZE = 64  # Process this many images at a time to limit memory
 total_frames = CYCLES * NUM_CLASSES
 print(f"Generating {total_frames} frames (mode: {VIDEO_MODE})...")
 
+brightness_history = []  # Rolling window of last N frames' brightness
+BRIGHTNESS_WINDOW = 6  # Number of frames to average over
+
 for frame_idx in range(total_frames):
     if VIDEO_MODE == "cycle":
         label = frame_idx % NUM_CLASSES
@@ -120,10 +123,15 @@ for frame_idx in range(total_frames):
 
     frame = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
 
-    # Global brightness scaling (only if too bright)
+    # Dynamic brightness scaling (only if too bright)
     current_mean = np.mean(frame)
-    if current_mean > TARGET_BRIGHTNESS:
-        scale = TARGET_BRIGHTNESS / current_mean
+    brightness_history.append(current_mean)
+    if len(brightness_history) > BRIGHTNESS_WINDOW:
+        brightness_history.pop(0)
+    target = np.mean(brightness_history)
+    if current_mean > target:
+        scale = target / current_mean
+        scale = scale
         frame = np.clip(frame * scale, 0, 255).astype(np.uint8)
 
     writer_cycle.write(frame)

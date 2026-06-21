@@ -18,11 +18,11 @@ OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 12
 LATENT_DIM = 16
-GRID_SIZE = 7
+GRID_SIZE = 20
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 2
-CYCLES = 10  # Number of times to cycle through all labels
-RESOLUTION = 640  # Output resolution (square)
+FPS = 15
+CYCLES = 20  # Number of times to cycle through all labels
+RESOLUTION = 1080  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
 sess = ort.InferenceSession(str(MODEL_PATH))
@@ -54,8 +54,12 @@ for label in range(NUM_CLASSES):
         for j in range(GRID_SIZE):
             idx = i * GRID_SIZE + j
             img = gen_images[idx]
+
+            # Remove 1-pixel border (28x28 -> 26x26)
+            img_cropped = img[1:-1, 1:-1]
+
             img_resized = cv2.resize(
-                (img * 255).astype(np.uint8),
+                (img_cropped * 255).astype(np.uint8),
                 (cell_size, cell_size),
                 interpolation=cv2.INTER_NEAREST,
             )
@@ -99,8 +103,10 @@ for cycle in range(CYCLES):
             for j in range(GRID_SIZE):
                 img_idx = frame_idx * IMGS_PER_FRAME + i * GRID_SIZE + j
                 img = all_images[img_idx]
+                # Remove 1-pixel border (28x28 -> 26x26)
+                img_cropped = img[1:-1, 1:-1]
                 img_resized = cv2.resize(
-                    (img * 255).astype(np.uint8),
+                    (img_cropped * 255).astype(np.uint8),
                     (cell_size, cell_size),
                     interpolation=cv2.INTER_NEAREST,
                 )

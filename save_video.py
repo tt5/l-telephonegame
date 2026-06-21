@@ -17,12 +17,13 @@ MODEL_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 12
-LATENT_DIM = 16
-GRID_SIZE = 20
+LATENT_DIM = 16 # depends on cvae3_generator
+GRID_SIZE = 40
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 15
-CYCLES = 20  # Number of times to cycle through all labels
-RESOLUTION = 1080  # Output resolution (square)
+FPS = 4
+CYCLES = 10  # Number of times to cycle through all labels
+VIDEO_MODE = "random"  # "cycle" = sequential labels 0-11, "random" = random label each frame
+RESOLUTION = 720  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
 sess = ort.InferenceSession(str(MODEL_PATH))
@@ -79,45 +80,49 @@ print(f"\nWriting cycling video: {OUTPUT_CYCLE}")
 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 writer_cycle = cv2.VideoWriter(str(OUTPUT_CYCLE), fourcc, FPS, (RESOLUTION, RESOLUTION))
 
-all_noise = np.random.normal(size=(NUM_CLASSES * CYCLES * IMGS_PER_FRAME, LATENT_DIM)).astype(np.float32)
-all_labels = np.zeros((NUM_CLASSES * CYCLES * IMGS_PER_FRAME, NUM_CLASSES), dtype=np.float32)
+BATCH_SIZE = 64  # Process this many images at a time to limit memory
 
-idx = 0
-for cycle in range(CYCLES):
-    for label in range(NUM_CLASSES):
-        for _ in range(IMGS_PER_FRAME):
-            all_labels[idx, label] = 1.0
-            idx += 1
+total_frames = CYCLES * NUM_CLASSES
+print(f"Generating {total_frames} frames (mode: {VIDEO_MODE})...")
 
-print("Generating all images for cycle video...")
-all_images = sess.run(
-    [output_name],
-    {latent_input_name: all_noise, label_input_name: all_labels},
-)[0][:, :, :, 0]
+for frame_idx in range(total_frames):
+    if VIDEO_MODE == "cycle":
+        label = frame_idx % NUM_CLASSES
+    else:  # random
+        label = np.random.randint(0, NUM_CLASSES)
 
-frame_idx = 0
-for cycle in range(CYCLES):
-    for label in range(NUM_CLASSES):
-        grid = np.zeros((RESOLUTION, RESOLUTION), dtype=np.uint8)
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
-                img_idx = frame_idx * IMGS_PER_FRAME + i * GRID_SIZE + j
-                img = all_images[img_idx]
-                # Remove 1-pixel border (28x28 -> 26x26)
-                img_cropped = img[1:-1, 1:-1]
-                img_resized = cv2.resize(
-                    (img_cropped * 255).astype(np.uint8),
-                    (cell_size, cell_size),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-                y_start = i * cell_size
-                x_start = j * cell_size
-                grid[y_start:y_start + cell_size, x_start:x_start + cell_size] = img_resized
+    # Generate one frame's worth of images in a small batch
+    noise = np.random.normal(size=(IMGS_PER_FRAME, LATENT_DIM)).astype(np.float32)
+    labels = np.zeros((IMGS_PER_FRAME, NUM_CLASSES), dtype=np.float32)
+    labels[:, label] = 1.0
 
-        frame = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
-        writer_cycle.write(frame)
-        frame_idx += 1
+    gen_images = sess.run(
+        [output_name],
+        {latent_input_name: noise, label_input_name: labels},
+    )[0][:, :, :, 0]
+
+    grid = np.zeros((RESOLUTION, RESOLUTION), dtype=np.uint8)
+    for i in range(GRID_SIZE):
+        for j in range(GRID_SIZE):
+            idx = i * GRID_SIZE + j
+            img = gen_images[idx]
+            # Remove 1-pixel border (28x28 -> 26x26)
+            img_cropped = img[1:-1, 1:-1]
+            img_resized = cv2.resize(
+                (img_cropped * 255).astype(np.uint8),
+                (cell_size, cell_size),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            y_start = i * cell_size
+            x_start = j * cell_size
+            grid[y_start:y_start + cell_size, x_start:x_start + cell_size] = img_resized
+
+    frame = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
+    writer_cycle.write(frame)
+
+    if (frame_idx + 1) % 10 == 0:
+        print(f"  Generated {frame_idx + 1}/{total_frames} frames...")
 
 writer_cycle.release()
-print(f"Saved cycling video with {CYCLES * NUM_CLASSES} frames to {OUTPUT_CYCLE}")
+print(f"Saved cycling video with {total_frames} frames to {OUTPUT_CYCLE}")
 print("Done!")

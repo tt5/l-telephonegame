@@ -18,9 +18,10 @@ OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 12
 LATENT_DIM = 16
-GRID_SIZE = 6
+GRID_SIZE = 7
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
 FPS = 2
+CYCLES = 10  # Number of times to cycle through all labels
 RESOLUTION = 640  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
@@ -62,22 +63,12 @@ for label in range(NUM_CLASSES):
             x_start = j * cell_size
             grid[y_start:y_start + cell_size, x_start:x_start + cell_size] = img_resized
 
-    cv2.putText(
-        grid,
-        f"Label: {label}",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        (255, 255, 255),
-        2,
-    )
-
     output_path = OUTPUT_DIR / f"grid_label_{label:02d}.png"
     cv2.imwrite(str(output_path), grid)
     print(f"  Saved: {output_path}")
 
 # Cycling video
-CYCLES = 3
+# Total duration = CYCLES * NUM_CLASSES / FPS seconds
 OUTPUT_CYCLE = Path(__file__).parent / "output_cvae3_cycle.mp4"
 
 print(f"\nWriting cycling video: {OUTPUT_CYCLE}")
@@ -118,15 +109,6 @@ for cycle in range(CYCLES):
                 grid[y_start:y_start + cell_size, x_start:x_start + cell_size] = img_resized
 
         frame = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
-        cv2.putText(
-            frame,
-            f"Label: {label} (Cycle {cycle + 1}/{CYCLES})",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2,
-        )
         writer_cycle.write(frame)
         frame_idx += 1
 

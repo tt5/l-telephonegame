@@ -23,6 +23,7 @@ IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
 FPS = 4
 CYCLES = 10  # Number of times to cycle through all labels
 VIDEO_MODE = "random"  # "cycle" = sequential labels 0-11, "random" = random label each frame
+TARGET_BRIGHTNESS = 32  # Target average brightness (0-255)
 RESOLUTION = 720  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
@@ -118,6 +119,13 @@ for frame_idx in range(total_frames):
             grid[y_start:y_start + cell_size, x_start:x_start + cell_size] = img_resized
 
     frame = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
+
+    # Global brightness scaling (only if too bright)
+    current_mean = np.mean(frame)
+    if current_mean > TARGET_BRIGHTNESS:
+        scale = TARGET_BRIGHTNESS / current_mean
+        frame = np.clip(frame * scale, 0, 255).astype(np.uint8)
+
     writer_cycle.write(frame)
 
     if (frame_idx + 1) % 10 == 0:

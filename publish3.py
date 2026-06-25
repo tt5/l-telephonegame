@@ -19,7 +19,7 @@ from pbm_utils import downscale_to_pbm, pbm_to_input2, prepare_for_mnist2
 NATS_URL = "nats://127.0.0.1:4222"
 SUBJECT = "one"
 FPS = 2
-LATENT_DIM = 32
+LATENT_DIM = 64
 GENERATOR_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 CLASSIFIER_PATH = Path(__file__).parent / "mnist3_model.onnx"
 

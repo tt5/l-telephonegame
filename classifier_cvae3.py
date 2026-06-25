@@ -23,7 +23,7 @@ SUBJECT_IN = "one"
 SUBJECT_OUT = "two"
 CLASSIFIER_PATH = Path(__file__).parent / "mnist3_model.onnx"
 GENERATOR_PATH = Path(__file__).parent / "cvae3_generator.onnx"
-LATENT_DIM = 32
+LATENT_DIM = 64
 
 # Derive num_classes from model output shape
 _cls_tmp = ort.InferenceSession(str(CLASSIFIER_PATH))

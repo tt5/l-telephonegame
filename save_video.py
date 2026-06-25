@@ -17,13 +17,13 @@ MODEL_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 12
-LATENT_DIM = 32 # depends on cvae3_generator
+LATENT_DIM = 64 # depends on cvae3_generator
 GRID_SIZE = 40
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 30
-CYCLES = 10  # Number of times to cycle through all labels
-VIDEO_MODE = "random"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
-BRIGHTNESS_WINDOW = 2  # Number of frames to average over for dynamic brightness target
+FPS = 9
+CYCLES = 30  # Number of times to cycle through all labels
+VIDEO_MODE = "mixed"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
+BRIGHTNESS_WINDOW = 1  # Number of frames to average over for dynamic brightness target
 RESOLUTION = 720  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")

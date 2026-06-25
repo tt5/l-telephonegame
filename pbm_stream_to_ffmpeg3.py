@@ -26,7 +26,7 @@ SUBJECT_OUT = "two"  # classifier output subject
 SCRIPT_DIR = Path(__file__).parent
 CLASSIFIER_PATH = SCRIPT_DIR / "mnist3_model.onnx"
 GENERATOR_PATH = SCRIPT_DIR / "cvae3_generator.onnx"
-LATENT_DIM = 32
+LATENT_DIM = 64
 
 # Derive num_classes from model output shape
 import onnxruntime as ort

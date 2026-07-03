@@ -89,7 +89,7 @@ if [ "$MODE" != "metrics" ]; then
     if need_step "mnist1" "$SCRIPT_DIR/mnist_model.onnx"; then
         cd "$TF_DIR"
         #"$CONDA_PYTHON" mnist.py 2>&1 | tail -5
-        "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
+        #"$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist_model --output mnist_model.onnx
         cp "$TF_DIR/mnist_model.onnx" "$SCRIPT_DIR/mnist_model.onnx"
     fi
 
@@ -105,6 +105,7 @@ if [ "$MODE" != "metrics" ]; then
     if need_data "data/pbm/" "$SCRIPT_DIR/data/pbm/" 5000; then
         cd "$SCRIPT_DIR"
         uv run generate_pbm.py --count 5000 --output-dir data/pbm
+        #uv run generate_pbm.py --count 1000 --output-dir data/pbm_test
     fi
 
     echo ""
@@ -118,21 +119,21 @@ if [ "$MODE" != "metrics" ]; then
 
     if need_step "mnist2" "$SCRIPT_DIR/mnist2_model.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" mnist2.py 2>&1 | tail -5
-        "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist2_model --output mnist2_model.onnx
+        #"$CONDA_PYTHON" mnist2.py 2>&1 | tail -5
+        #"$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist2_model --output mnist2_model.onnx
         cp "$TF_DIR/mnist2_model.onnx" "$SCRIPT_DIR/mnist2_model.onnx"
     fi
 
     if need_step "cvae2" "$SCRIPT_DIR/cvae2_generator.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" train_cvae2.py 2>&1 | tail -5
+        #"$CONDA_PYTHON" train_cvae2.py --data-dir ../../telephonegame/data/pbm 2>&1 | tail -5
         cp "$TF_DIR/cvae2_generator.onnx" "$SCRIPT_DIR/cvae2_generator.onnx" 2>/dev/null || true
     fi
 
     # ─── Generate data/pbm2/ ─────────────────────────────────────────
-    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 5000; then
+    if need_data "data/pbm2/" "$SCRIPT_DIR/data/pbm2/" 1000; then
         cd "$SCRIPT_DIR"
-        uv run generate_pbm2.py --count 5000 --output-dir data/pbm2
+        uv run generate_pbm2.py --count 1000 --output-dir data/pbm2
     fi
 
     echo ""
@@ -146,14 +147,14 @@ if [ "$MODE" != "metrics" ]; then
 
     if need_step "mnist3" "$SCRIPT_DIR/mnist3_model.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" mnist3.py 2>&1 | tail -5
-        "$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist3_model --output mnist3_model.onnx
+        #"$CONDA_PYTHON" mnist3.py 2>&1 | tail -5
+        #"$CONDA_PYTHON" -m tf2onnx.convert --saved-model mnist3_model --output mnist3_model.onnx
         cp "$TF_DIR/mnist3_model.onnx" "$SCRIPT_DIR/mnist3_model.onnx"
     fi
 
     if need_step "cvae3" "$SCRIPT_DIR/cvae3_generator.onnx"; then
         cd "$TF_DIR"
-        "$CONDA_PYTHON" train_cvae3.py 2>&1 | tail -5
+        #"$CONDA_PYTHON" train_cvae2.py --data-dir ../../telephonegame/data/pbm2 2>&1 | tail -5
         cp "$TF_DIR/cvae3_generator.onnx" "$SCRIPT_DIR/cvae3_generator.onnx" 2>/dev/null || true
     fi
 

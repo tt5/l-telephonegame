@@ -97,6 +97,8 @@ def main():
                 NUM_CLASSES, QUALITY_THRESHOLD, imgs_per_class
             )
             generated += len(good_images)
+            progress_report(generated, high_saved, low_saved, high_need, low_need,
+                            red_flags, start_time, 0)
 
             if len(good_images) == 0:
                 continue

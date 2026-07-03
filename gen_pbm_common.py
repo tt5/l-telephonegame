@@ -140,7 +140,7 @@ def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name,
 
         # Retry short classes individually
         for c in short_classes:
-            print(f"  [RETRY] Class {c} short ({len(all_images[c])}/{images_per_class}), retrying...")
+            #print(f"  [RETRY] Class {c} short ({len(all_images[c])}/{images_per_class}), retrying...")
             retry_count = 0
             while len(all_images[c]) < images_per_class:
                 retry_count += 1

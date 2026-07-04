@@ -17,7 +17,7 @@ MODEL_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 6+2
-LATENT_DIM = 256 # depends on cvae3_generator
+LATENT_DIM = 128 # depends on cvae3_generator
 GRID_SIZE = 18
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
 FPS = 2

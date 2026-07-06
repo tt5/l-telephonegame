@@ -16,13 +16,13 @@ from pathlib import Path
 MODEL_PATH = Path(__file__).parent / "cvae3_generator.onnx"
 OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
-NUM_CLASSES = 6+2
-LATENT_DIM = 128 # depends on cvae3_generator
-GRID_SIZE = 18
+NUM_CLASSES = 3+2
+LATENT_DIM = 384 # depends on cvae3_generator
+GRID_SIZE = 36
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 2
-CYCLES = 10  # Number of times to cycle through all labels
-VIDEO_MODE = "mixed"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
+FPS = 8
+CYCLES = 30  # Number of times to cycle through all labels
+VIDEO_MODE = "cycle"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
 BRIGHTNESS_WINDOW = 1 # Number of frames to average over for dynamic brightness target
 RESOLUTION = 720  # Output resolution (square)
 
@@ -141,11 +141,11 @@ for frame_idx in range(total_frames):
         brightness_history.pop(0)
     target = np.mean(brightness_history)
     if current_mean > target:
-        #scale = target / current_mean
-        #scale = (scale * scale) * 2
-        #if VIDEO_MODE == "mixed":
-        #    scale = 1
-        scale = 1
+        scale = target / current_mean
+        scale = (scale * scale) * 2
+        if VIDEO_MODE == "mixed":
+            scale = 1
+        #scale = 1
         frame = np.clip(frame * scale, 0, 255).astype(np.uint8)
 
     writer_cycle.write(frame)

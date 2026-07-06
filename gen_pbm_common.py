@@ -161,7 +161,7 @@ def generate_balanced(gen_session, gen_output_name, cls_session, cls_input_name,
                 if pred == c and conf >= quality_threshold:
                     all_images[c].append(img)
                     all_digits[c].append(c)
-                    print(f"  [RETRY] Class {c} passed after {retry_count} retries (conf={conf:.3f})")
+                    #print(f"  [RETRY] Class {c} passed after {retry_count} retries (conf={conf:.3f})")
                     break
 
     # Concatenate all classes

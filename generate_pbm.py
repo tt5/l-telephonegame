@@ -35,6 +35,7 @@ IMAGES_PER_CLASS = 100
 # Derive num_classes from classifier model output shape
 _cls_tmp = ort.InferenceSession(str(Path(__file__).parent / CLS_MODEL))
 NUM_CLASSES = _cls_tmp.get_outputs()[0].shape[1]
+print(NUM_CLASSES)
 del _cls_tmp
 
 
@@ -48,8 +49,9 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     target_total = args.count
-    target_high = target_total * (NUM_CLASSES - 1) // NUM_CLASSES
+    target_high = target_total * NUM_CLASSES // (NUM_CLASSES+1)
     target_low = target_total - target_high
+    print(f"{target_high} {target_low}")
 
     existing_high, existing_low = count_by_confidence(out_dir)
     print(f"Stage {STAGE}: {GEN_MODEL} + {CLS_MODEL}, {NUM_CLASSES} classes")

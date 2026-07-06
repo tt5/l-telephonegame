@@ -63,7 +63,7 @@ def main():
     low_need = max(0, target_low - existing_low)
     images_per_class_high = high_need // NUM_CLASSES
     images_per_class_low = low_need // NUM_CLASSES
-    max_per_class = target_total // NUM_CLASSES + 1
+    max_per_class = target_total // (NUM_CLASSES + 1) + 1
 
     if high_need == 0 and low_need == 0:
         print("Already have enough images. Nothing to do.")

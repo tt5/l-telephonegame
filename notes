@@ -28,3 +28,5 @@ uv run python3 generate_pbm.py --count 100000
 Done! Generated 113180 images in 450.0s (251 img/s)
 
 Done! Generated 126840 images in 31.8s (3990 img/s)
+
+todo: generate_pbm count per class (and cap) when getting the number of already exisiting images

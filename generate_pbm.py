@@ -63,6 +63,7 @@ def main():
     low_need = max(0, target_low - existing_low)
     images_per_class_high = high_need // NUM_CLASSES
     images_per_class_low = low_need // NUM_CLASSES
+    max_per_class = target_total // NUM_CLASSES + 1
 
     if high_need == 0 and low_need == 0:
         print("Already have enough images. Nothing to do.")
@@ -81,6 +82,8 @@ def main():
 
     high_saved = 0
     low_saved = 0
+    high_saved_per_class = [0] * NUM_CLASSES
+    low_saved_per_class = [0] * NUM_CLASSES
     generated = 0
     red_flags = 0
     save_counter = 0
@@ -140,12 +143,14 @@ def main():
                     # Save based on target ratio
                     is_high = final_confidence >= CONF_THRESHOLD
                     save = False
-                    if is_high and high_saved < high_need:
+                    if is_high and high_saved < high_need and high_saved_per_class[final_predicted] < max_per_class:
                         save = True
                         high_saved += 1
+                        high_saved_per_class[final_predicted] += 1
                     elif not is_high and low_saved < low_need:
                         save = True
                         low_saved += 1
+                        low_saved_per_class[final_predicted] += 1
 
                     if save:
                         conf_int = min(65535, max(0, int(final_confidence * 10000)))

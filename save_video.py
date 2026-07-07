@@ -18,12 +18,12 @@ OUTPUT_DIR = Path(__file__).parent / "output_grids"
 
 NUM_CLASSES = 3+2
 LATENT_DIM = 384 # depends on cvae3_generator
-GRID_SIZE = 36
+GRID_SIZE = 14
 IMGS_PER_FRAME = GRID_SIZE * GRID_SIZE
-FPS = 8
-CYCLES = 30  # Number of times to cycle through all labels
-VIDEO_MODE = "cycle"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
-BRIGHTNESS_WINDOW = 1 # Number of frames to average over for dynamic brightness target
+FPS = 15
+CYCLES = 80  # Number of times to cycle through all labels
+VIDEO_MODE = "random"  # "cycle" = sequential, "random" = random, "mixed" = upper half cycle, lower half random
+BRIGHTNESS_WINDOW = 3 # Number of frames to average over for dynamic brightness target
 RESOLUTION = 720  # Output resolution (square)
 
 print(f"Loading model: {MODEL_PATH}")
@@ -149,6 +149,8 @@ for frame_idx in range(total_frames):
         frame = np.clip(frame * scale, 0, 255).astype(np.uint8)
 
     writer_cycle.write(frame)
+    if np.random.randint(0,1)==0:
+        writer_cycle.write(frame)
 
     if (frame_idx + 1) % 10 == 0:
         print(f"  Generated {frame_idx + 1}/{total_frames} frames...")

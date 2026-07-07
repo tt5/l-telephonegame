@@ -1,6 +1,8 @@
 **/*.raw
 **/*.png
 **/*.mp4
+**/*.wav
+**/*.onnx
 hyx
 nats-server
 __pycache__
@@ -9,4 +11,3 @@ one.config
 data
 notes2.md
 metrics
-**/*.onnx
